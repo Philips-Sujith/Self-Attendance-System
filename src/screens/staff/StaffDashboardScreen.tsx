@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  TouchableOpacity,
-  FlatList,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { Card } from '../../components/common/Card';
@@ -18,53 +18,37 @@ import { CourseGroup } from '../../types';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StaffStackParamList } from '../../types/navigation';
-
-const MOCK_GROUPS: CourseGroup[] = [
-  {
-    id: 'grp-001',
-    name: 'Digital System Design (DSD)',
-    code: 'CS302',
-    section: 'Section A',
-    staffId: 'staff-001',
-    staffName: 'Dr. Sujith Philips',
-    joinCode: 'DSD-A24',
-    scheduleDay: 'Monday, Wednesday, Friday',
-    schedulePeriod: '09:00 - 10:00 AM',
-    studentCount: 85,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'grp-002',
-    name: 'Operating Systems & Concurrency',
-    code: 'CS401',
-    section: 'Section B',
-    staffId: 'staff-001',
-    staffName: 'Dr. Sujith Philips',
-    joinCode: 'OS-B89',
-    scheduleDay: 'Tuesday, Thursday',
-    schedulePeriod: '11:15 - 12:45 PM',
-    studentCount: 78,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'grp-003',
-    name: 'Distributed Systems & Cloud',
-    code: 'CS605',
-    section: 'Section C',
-    staffId: 'staff-001',
-    staffName: 'Dr. Sujith Philips',
-    joinCode: 'DSC-C12',
-    scheduleDay: 'Friday',
-    schedulePeriod: '02:00 - 04:00 PM',
-    studentCount: 64,
-    createdAt: new Date().toISOString(),
-  },
-];
+import { groupService } from '../../services/groupService';
+import { StaffCreateGroupModal } from './StaffCreateGroupModal';
 
 export const StaffDashboardScreen: React.FC = () => {
   const { user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<StaffStackParamList>>();
-  const [groups, setGroups] = useState<CourseGroup[]>(MOCK_GROUPS);
+  const [groups, setGroups] = useState<CourseGroup[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+
+  const fetchGroups = useCallback(async () => {
+    if (!user) return;
+    const data = await groupService.getStaffCourseGroups(user.id);
+    setGroups(data);
+    setIsLoading(false);
+    setIsRefreshing(false);
+  }, [user]);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  const onRefresh = () => {
+    setIsRefreshing(true);
+    fetchGroups();
+  };
+
+  const handleGroupCreated = (newGroup: CourseGroup) => {
+    setGroups((prev) => [newGroup, ...prev]);
+  };
 
   const handleOpenGroup = (group: CourseGroup) => {
     navigation.navigate('StaffGroupDetail', { group });
@@ -86,19 +70,30 @@ export const StaffDashboardScreen: React.FC = () => {
         status: 'active',
         networkSessionId: `SAS-${group.code}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
         presentCount: 0,
-        totalStudents: group.studentCount || 85,
+        totalStudents: group.studentCount || 0,
       },
     });
   };
 
+  const totalStudents = groups.reduce((acc, g) => acc + (g.studentCount || 0), 0);
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.primaryLight}
+          />
+        }
+      >
         {/* Top Staff Header */}
         <View style={styles.header}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.staffName}>{user?.name || 'Dr. Sujith Philips'}</Text>
+            <Text style={styles.staffName}>{user?.name || 'Faculty Member'}</Text>
             <Text style={styles.departmentText}>
               {user?.department || 'Department of Computer Science'} • {user?.staffId || 'CSE-FAC-104'}
             </Text>
@@ -115,9 +110,7 @@ export const StaffDashboardScreen: React.FC = () => {
             <Text style={styles.statLabel}>Course Groups</Text>
           </Card>
           <Card style={styles.statCard}>
-            <Text style={styles.statNumber}>
-              {groups.reduce((acc, g) => acc + (g.studentCount || 0), 0)}
-            </Text>
+            <Text style={styles.statNumber}>{totalStudents}</Text>
             <Text style={styles.statLabel}>Total Students</Text>
           </Card>
           <Card style={styles.statCard}>
@@ -126,7 +119,7 @@ export const StaffDashboardScreen: React.FC = () => {
           </Card>
         </View>
 
-        {/* Course Groups Section */}
+        {/* Course Groups Section Header */}
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>My Course Groups</Text>
@@ -136,70 +129,103 @@ export const StaffDashboardScreen: React.FC = () => {
             title="+ New Group"
             size="sm"
             variant="outline"
-            onPress={() => {
-              /* In Stage 3: Full modal */
-            }}
+            iconName="add"
+            onPress={() => setCreateModalVisible(true)}
           />
         </View>
 
         {/* Course Cards List */}
-        <View style={styles.groupsList}>
-          {groups.map((item) => (
-            <Card key={item.id} variant="elevated" style={styles.courseCard}>
-              <View style={styles.courseCardHeader}>
-                <View style={styles.courseInfo}>
-                  <View style={styles.codeRow}>
-                    <Badge label={item.code} variant="primary" size="sm" />
-                    <Badge label={item.section} variant="neutral" size="sm" />
+        {isLoading ? (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" color={Colors.primaryLight} />
+            <Text style={styles.loadingText}>Loading course groups…</Text>
+          </View>
+        ) : groups.length === 0 ? (
+          <Card variant="bordered" style={styles.emptyCard}>
+            <Ionicons name="folder-open-outline" size={48} color={Colors.textMuted} />
+            <Text style={styles.emptyTitle}>No Course Groups Yet</Text>
+            <Text style={styles.emptyDesc}>
+              Create your first course group to generate a join code and enroll students.
+            </Text>
+            <Button
+              title="Create First Course Group"
+              variant="primary"
+              size="md"
+              iconName="add-circle-outline"
+              onPress={() => setCreateModalVisible(true)}
+              style={{ marginTop: Spacing.md }}
+            />
+          </Card>
+        ) : (
+          <View style={styles.groupsList}>
+            {groups.map((item) => (
+              <Card key={item.id} variant="elevated" style={styles.courseCard}>
+                <View style={styles.courseCardHeader}>
+                  <View style={styles.courseInfo}>
+                    <View style={styles.codeRow}>
+                      <Badge label={item.code} variant="primary" size="sm" />
+                      <Badge label={item.section} variant="neutral" size="sm" />
+                    </View>
+                    <Text style={styles.courseName}>{item.name}</Text>
                   </View>
-                  <Text style={styles.courseName}>{item.name}</Text>
+
+                  <View style={styles.joinCodeBox}>
+                    <Text style={styles.joinCodeLabel}>JOIN CODE</Text>
+                    <Text style={styles.joinCodeText}>{item.joinCode}</Text>
+                  </View>
                 </View>
 
-                <View style={styles.joinCodeBox}>
-                  <Text style={styles.joinCodeLabel}>JOIN CODE</Text>
-                  <Text style={styles.joinCodeText}>{item.joinCode}</Text>
+                {/* Schedule and Roster info */}
+                <View style={styles.scheduleRow}>
+                  <View style={styles.scheduleItem}>
+                    <Ionicons name="calendar-outline" size={14} color={Colors.textMuted} />
+                    <Text style={styles.scheduleText}>{item.scheduleDay}</Text>
+                  </View>
+                  <View style={styles.scheduleItem}>
+                    <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
+                    <Text style={styles.scheduleText}>{item.schedulePeriod}</Text>
+                  </View>
+                  <View style={styles.scheduleItem}>
+                    <Ionicons name="people-outline" size={14} color={Colors.textMuted} />
+                    <Text style={styles.scheduleText}>{item.studentCount || 0} Students</Text>
+                  </View>
                 </View>
-              </View>
 
-              {/* Schedule and Roster info */}
-              <View style={styles.scheduleRow}>
-                <View style={styles.scheduleItem}>
-                  <Ionicons name="calendar-outline" size={14} color={Colors.textMuted} />
-                  <Text style={styles.scheduleText}>{item.scheduleDay}</Text>
+                {/* Card Action Buttons */}
+                <View style={styles.cardActionsRow}>
+                  <Button
+                    title="View Roster"
+                    variant="ghost"
+                    size="sm"
+                    iconName="list-outline"
+                    onPress={() => handleOpenGroup(item)}
+                    style={styles.rosterBtn}
+                  />
+                  <Button
+                    title="Start Session"
+                    variant="primary"
+                    size="sm"
+                    iconName="radio-outline"
+                    onPress={() => handleStartQuickSession(item)}
+                    style={styles.sessionBtn}
+                  />
                 </View>
-                <View style={styles.scheduleItem}>
-                  <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
-                  <Text style={styles.scheduleText}>{item.schedulePeriod}</Text>
-                </View>
-                <View style={styles.scheduleItem}>
-                  <Ionicons name="people-outline" size={14} color={Colors.textMuted} />
-                  <Text style={styles.scheduleText}>{item.studentCount} Students</Text>
-                </View>
-              </View>
-
-              {/* Card Action Buttons */}
-              <View style={styles.cardActionsRow}>
-                <Button
-                  title="View Roster"
-                  variant="ghost"
-                  size="sm"
-                  iconName="list-outline"
-                  onPress={() => handleOpenGroup(item)}
-                  style={styles.rosterBtn}
-                />
-                <Button
-                  title="Start Session"
-                  variant="primary"
-                  size="sm"
-                  iconName="radio-outline"
-                  onPress={() => handleStartQuickSession(item)}
-                  style={styles.sessionBtn}
-                />
-              </View>
-            </Card>
-          ))}
-        </View>
+              </Card>
+            ))}
+          </View>
+        )}
       </ScrollView>
+
+      {/* Course Group Creation Modal */}
+      {user && (
+        <StaffCreateGroupModal
+          visible={createModalVisible}
+          staffId={user.id}
+          staffName={user.name}
+          onClose={() => setCreateModalVisible(false)}
+          onGroupCreated={handleGroupCreated}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -277,6 +303,30 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     ...Typography.caption,
     color: Colors.textMuted,
+  },
+  loaderContainer: {
+    padding: Spacing.xxl,
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  loadingText: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    padding: Spacing.xl,
+    marginTop: Spacing.md,
+  },
+  emptyTitle: {
+    ...Typography.h3,
+    marginTop: Spacing.sm,
+  },
+  emptyDesc: {
+    ...Typography.caption,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 18,
   },
   groupsList: {
     gap: Spacing.md,

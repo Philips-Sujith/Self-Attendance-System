@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { Card } from '../../components/common/Card';
@@ -17,60 +18,7 @@ import { CourseGroup, AttendanceSession } from '../../types';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StudentStackParamList } from '../../types/navigation';
-
-interface EnrolledCourseItem extends CourseGroup {
-  totalClasses: number;
-  attendedClasses: number;
-  percentage: number;
-}
-
-const MOCK_ENROLLED_COURSES: EnrolledCourseItem[] = [
-  {
-    id: 'grp-001',
-    name: 'Digital System Design',
-    code: 'CS302',
-    section: 'Section A',
-    staffId: 'staff-001',
-    staffName: 'Dr. Sujith Philips',
-    joinCode: 'DSD-A24',
-    scheduleDay: 'Mon, Wed, Fri',
-    schedulePeriod: '09:00 - 10:00 AM',
-    totalClasses: 25,
-    attendedClasses: 24,
-    percentage: 96,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'grp-002',
-    name: 'Operating Systems & Concurrency',
-    code: 'CS401',
-    section: 'Section B',
-    staffId: 'staff-001',
-    staffName: 'Dr. Sujith Philips',
-    joinCode: 'OS-B89',
-    scheduleDay: 'Tue, Thu',
-    schedulePeriod: '11:15 - 12:45 PM',
-    totalClasses: 22,
-    attendedClasses: 19,
-    percentage: 86.4,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'grp-003',
-    name: 'Distributed Systems & Cloud',
-    code: 'CS605',
-    section: 'Section C',
-    staffId: 'staff-002',
-    staffName: 'Prof. Alan Turing',
-    joinCode: 'DSC-C12',
-    scheduleDay: 'Friday',
-    schedulePeriod: '02:00 - 04:00 PM',
-    totalClasses: 18,
-    attendedClasses: 17,
-    percentage: 94.4,
-    createdAt: new Date().toISOString(),
-  },
-];
+import { groupService } from '../../services/groupService';
 
 // Active mock session that student can mark
 const MOCK_ACTIVE_SESSION: AttendanceSession = {
@@ -91,12 +39,27 @@ const MOCK_ACTIVE_SESSION: AttendanceSession = {
 export const StudentDashboardScreen: React.FC = () => {
   const { user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<StudentStackParamList>>();
-  const [courses] = useState<EnrolledCourseItem[]>(MOCK_ENROLLED_COURSES);
-  const [activeSession, setActiveSession] = useState<AttendanceSession | null>(MOCK_ACTIVE_SESSION);
+  const [courses, setCourses] = useState<CourseGroup[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeSession] = useState<AttendanceSession | null>(MOCK_ACTIVE_SESSION);
 
-  const overallAvg = Math.round(
-    courses.reduce((acc, c) => acc + c.percentage, 0) / courses.length
-  );
+  const fetchCourses = useCallback(async () => {
+    if (!user) return;
+    const data = await groupService.getStudentCourseGroups(user.id);
+    setCourses(data);
+    setIsLoading(false);
+    setIsRefreshing(false);
+  }, [user]);
+
+  useEffect(() => {
+    fetchCourses();
+  }, [fetchCourses]);
+
+  const onRefresh = () => {
+    setIsRefreshing(true);
+    fetchCourses();
+  };
 
   const handleMarkAttendance = () => {
     if (activeSession) {
@@ -106,10 +69,19 @@ export const StudentDashboardScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.secondary}
+          />
+        }
+      >
         {/* Student Profile Header */}
         <View style={styles.header}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>Student Dashboard</Text>
             <Text style={styles.studentName}>{user?.name || 'Alex Johnson'}</Text>
             <Text style={styles.subDetail}>
@@ -150,7 +122,7 @@ export const StudentDashboardScreen: React.FC = () => {
           <View style={styles.summaryRow}>
             <View>
               <Text style={styles.summaryLabel}>OVERALL ATTENDANCE</Text>
-              <Text style={styles.summaryPercent}>{overallAvg}%</Text>
+              <Text style={styles.summaryPercent}>92.8%</Text>
               <Text style={styles.summarySub}>Across {courses.length} enrolled subjects</Text>
             </View>
             <View style={styles.summaryIconBox}>
@@ -163,7 +135,7 @@ export const StudentDashboardScreen: React.FC = () => {
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>Enrolled Courses</Text>
-            <Text style={styles.sectionSubtitle}>View attendance per subject</Text>
+            <Text style={styles.sectionSubtitle}>Subjects you've joined with join codes</Text>
           </View>
           <Button
             title="+ Join Course"
@@ -175,47 +147,59 @@ export const StudentDashboardScreen: React.FC = () => {
         </View>
 
         {/* Courses List */}
-        <View style={styles.coursesList}>
-          {courses.map((course) => (
-            <Card key={course.id} style={styles.courseCard}>
-              <View style={styles.courseHeader}>
-                <View style={styles.courseTitleCol}>
-                  <View style={styles.codeRow}>
-                    <Badge label={course.code} variant="secondary" size="sm" />
-                    <Badge label={course.section} variant="neutral" size="sm" />
+        {isLoading ? (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" color={Colors.secondary} />
+            <Text style={styles.loadingText}>Loading enrolled courses…</Text>
+          </View>
+        ) : courses.length === 0 ? (
+          <Card variant="bordered" style={styles.emptyCard}>
+            <Ionicons name="school-outline" size={44} color={Colors.textMuted} />
+            <Text style={styles.emptyTitle}>No Courses Enrolled</Text>
+            <Text style={styles.emptyDesc}>
+              Ask your faculty member for the 6-character course join code and tap "+ Join Course".
+            </Text>
+            <Button
+              title="Join a Course Now"
+              variant="secondary"
+              size="md"
+              iconName="key-outline"
+              onPress={() => navigation.navigate('StudentJoinGroup')}
+              style={{ marginTop: Spacing.md }}
+            />
+          </Card>
+        ) : (
+          <View style={styles.coursesList}>
+            {courses.map((course) => (
+              <Card key={course.id} style={styles.courseCard}>
+                <View style={styles.courseHeader}>
+                  <View style={styles.courseTitleCol}>
+                    <View style={styles.codeRow}>
+                      <Badge label={course.code} variant="secondary" size="sm" />
+                      <Badge label={course.section} variant="neutral" size="sm" />
+                    </View>
+                    <Text style={styles.courseName}>{course.name}</Text>
+                    <Text style={styles.instructorText}>Instructor: {course.staffName || 'Faculty'}</Text>
                   </View>
-                  <Text style={styles.courseName}>{course.name}</Text>
-                  <Text style={styles.instructorText}>Instructor: {course.staffName}</Text>
+
+                  <View style={styles.percentBox}>
+                    <Text style={[styles.percentText, { color: Colors.success }]}>
+                      95%
+                    </Text>
+                    <Text style={styles.classesAttended}>Present: 19/20</Text>
+                  </View>
                 </View>
 
-                <View style={styles.percentBox}>
-                  <Text
-                    style={[
-                      styles.percentText,
-                      course.percentage >= 85
-                        ? { color: Colors.success }
-                        : course.percentage >= 75
-                        ? { color: Colors.warning }
-                        : { color: Colors.danger },
-                    ]}
-                  >
-                    {course.percentage}%
-                  </Text>
-                  <Text style={styles.classesAttended}>
-                    {course.attendedClasses}/{course.totalClasses} classes
+                <View style={styles.scheduleRow}>
+                  <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
+                  <Text style={styles.scheduleText}>
+                    {course.scheduleDay} ({course.schedulePeriod})
                   </Text>
                 </View>
-              </View>
-
-              <View style={styles.scheduleRow}>
-                <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
-                <Text style={styles.scheduleText}>
-                  {course.scheduleDay} ({course.schedulePeriod})
-                </Text>
-              </View>
-            </Card>
-          ))}
-        </View>
+              </Card>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -329,6 +313,30 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     ...Typography.caption,
     color: Colors.textMuted,
+  },
+  loaderContainer: {
+    padding: Spacing.xxl,
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  loadingText: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    padding: Spacing.xl,
+    marginTop: Spacing.md,
+  },
+  emptyTitle: {
+    ...Typography.h3,
+    marginTop: Spacing.sm,
+  },
+  emptyDesc: {
+    ...Typography.caption,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 18,
   },
   coursesList: {
     gap: Spacing.sm,

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  TouchableOpacity,
   Alert,
 } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
@@ -15,6 +16,8 @@ import { Button } from '../../components/common/Button';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StudentStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../context/AuthContext';
+import { groupService } from '../../services/groupService';
 
 type StudentJoinGroupScreenProps = NativeStackScreenProps<
   StudentStackParamList,
@@ -24,29 +27,44 @@ type StudentJoinGroupScreenProps = NativeStackScreenProps<
 export const StudentJoinGroupScreen: React.FC<StudentJoinGroupScreenProps> = ({
   navigation,
 }) => {
+  const { user } = useAuth();
   const [joinCode, setJoinCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleJoin = async () => {
-    if (!joinCode.trim()) {
-      Alert.alert('Join Code Required', 'Please enter the code provided by your instructor.');
+    setErrorMessage(null);
+    const cleanedCode = joinCode.trim().toUpperCase();
+
+    if (!cleanedCode) {
+      setErrorMessage('Please enter the course join code.');
+      return;
+    }
+
+    if (!user) {
+      setErrorMessage('You must be logged in to join a course.');
       return;
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      Alert.alert(
-        'Successfully Joined!',
-        `You have been added to the roster for course with code: ${joinCode.toUpperCase().trim()}`,
-        [
-          {
-            text: 'View Courses',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
-    }, 600);
+    const result = await groupService.joinCourseGroupByCode(user.id, cleanedCode, user);
+    setIsSubmitting(false);
+
+    if (!result.success) {
+      setErrorMessage(result.error || 'Could not join course group.');
+      return;
+    }
+
+    Alert.alert(
+      '🎉 Enrolled Successfully!',
+      `You have joined ${result.group?.name} (${result.group?.code} - ${result.group?.section}). You will now receive attendance alerts for this class.`,
+      [
+        {
+          text: 'Go to My Courses',
+          onPress: () => navigation.goBack(),
+        },
+      ]
+    );
   };
 
   return (
@@ -67,13 +85,23 @@ export const StudentJoinGroupScreen: React.FC<StudentJoinGroupScreenProps> = ({
             Enter the 6-character code shared by your professor in class or via group chat.
           </Text>
 
+          {errorMessage && (
+            <View style={styles.errorBanner}>
+              <Ionicons name="alert-circle" size={18} color={Colors.danger} />
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          )}
+
           <Input
             placeholder="e.g. DSD-A24"
             autoCapitalize="characters"
             maxLength={10}
             leftIcon="qr-code-outline"
             value={joinCode}
-            onChangeText={(text) => setJoinCode(text.toUpperCase())}
+            onChangeText={(text) => {
+              setJoinCode(text.toUpperCase());
+              setErrorMessage(null);
+            }}
             containerStyle={styles.inputContainer}
           />
 
@@ -84,6 +112,36 @@ export const StudentJoinGroupScreen: React.FC<StudentJoinGroupScreenProps> = ({
             loading={isSubmitting}
             onPress={handleJoin}
           />
+        </Card>
+
+        {/* Quick Sample Codes in Demo/Test Mode */}
+        <Card style={styles.quickSamplesCard}>
+          <Text style={styles.samplesHeading}>Available Codes in Demo Mode</Text>
+          <View style={styles.samplesRow}>
+            <TouchableOpacity
+              style={styles.sampleChip}
+              onPress={() => setJoinCode('DSD-A24')}
+            >
+              <Text style={styles.sampleCode}>DSD-A24</Text>
+              <Text style={styles.sampleSub}>DSD Sec A</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sampleChip}
+              onPress={() => setJoinCode('OS-B89')}
+            >
+              <Text style={styles.sampleCode}>OS-B89</Text>
+              <Text style={styles.sampleSub}>OS Sec B</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sampleChip}
+              onPress={() => setJoinCode('DSC-C12')}
+            >
+              <Text style={styles.sampleCode}>DSC-C12</Text>
+              <Text style={styles.sampleSub}>DSC Sec C</Text>
+            </TouchableOpacity>
+          </View>
         </Card>
 
         {/* Info card */}
@@ -131,12 +189,58 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     textAlign: 'center',
     marginTop: Spacing.xs,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     lineHeight: 18,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dangerLight,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.danger + '44',
+    width: '100%',
+  },
+  errorText: {
+    ...Typography.captionBold,
+    color: Colors.danger,
+    flex: 1,
   },
   inputContainer: {
     width: '100%',
     marginBottom: Spacing.lg,
+  },
+  quickSamplesCard: {
+    padding: Spacing.md,
+  },
+  samplesHeading: {
+    ...Typography.captionBold,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.sm,
+  },
+  samplesRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  sampleChip: {
+    flex: 1,
+    backgroundColor: Colors.surfaceElevated,
+    padding: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  sampleCode: {
+    ...Typography.captionBold,
+    color: Colors.secondary,
+  },
+  sampleSub: {
+    fontSize: 10,
+    color: Colors.textMuted,
   },
   infoCard: {
     flexDirection: 'row',
