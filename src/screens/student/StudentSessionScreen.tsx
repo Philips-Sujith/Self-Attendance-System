@@ -23,6 +23,7 @@ import {
   DiscoveredService,
   ProximityScanStatus,
 } from '../../services/networkProximityService';
+import { deviceSecurityService } from '../../services/deviceSecurityService';
 
 type StudentSessionScreenProps = NativeStackScreenProps<
   StudentStackParamList,
@@ -42,10 +43,16 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
   const [isMarked, setIsMarked] = useState(false);
   const [markedTimestamp, setMarkedTimestamp] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [deviceId, setDeviceId] = useState<string>('Loading...');
 
-  const deviceId = 'DEV-PHONE-ENCLAVE-8821';
+  // 1. Fetch persistent device fingerprint on mount
+  useEffect(() => {
+    deviceSecurityService.getOrCreatePersistentDeviceId().then((id) => {
+      setDeviceId(id);
+    });
+  }, []);
 
-  // Run mDNS proximity scan
+  // 2. Run mDNS proximity scan
   const startProximityScan = () => {
     setErrorMessage(null);
     setScanStatus('scanning');
@@ -97,7 +104,7 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
 
     if (!result.success) {
       setErrorMessage(result.error || 'Failed to mark attendance.');
-      Alert.alert('Submission Error', result.error || 'Failed to record attendance.');
+      Alert.alert('Anti-Proxy Validation', result.error || 'Failed to record attendance.');
       return;
     }
 
@@ -203,16 +210,21 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
           )}
         </Card>
 
-        {/* Anti-Proxy Safeguard Details */}
+        {/* Anti-Proxy Safeguard Details (§5) */}
         <Card style={styles.deviceCard}>
           <View style={styles.deviceRow}>
             <Ionicons name="phone-portrait-outline" size={18} color={Colors.primaryLight} />
             <Text style={styles.deviceLabel}>Bound Device Fingerprint:</Text>
             <Text style={styles.deviceVal}>{deviceId}</Text>
           </View>
-          <Text style={styles.antiProxyNotice}>
-            🔒 Anti-Proxy Rule: One device can only submit attendance for ONE student account per session.
-          </Text>
+          <View style={styles.rulesList}>
+            <Text style={styles.antiProxyNotice}>
+              🔒 <Text style={styles.ruleBold}>One Device, One Mark:</Text> A single physical phone can only mark attendance for 1 student per session.
+            </Text>
+            <Text style={styles.antiProxyNotice}>
+              🛡️ <Text style={styles.ruleBold}>No Duplicate Submissions:</Text> Second attempts on the same session are strictly rejected by database constraints.
+            </Text>
+          </View>
         </Card>
 
         {/* Action Button / Success Confirmation */}
@@ -222,8 +234,12 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
             <Text style={styles.successTitle}>Attendance Marked!</Text>
             <Text style={styles.successCourse}>{session.groupName}</Text>
             <Text style={styles.successTime}>
-              Recorded at: {markedTimestamp} (WiFi Proximity Verified)
+              Recorded at: {markedTimestamp} • WiFi Proximity Verified
             </Text>
+            <View style={styles.auditInfoRow}>
+              <Ionicons name="finger-print-outline" size={14} color={Colors.textMuted} />
+              <Text style={styles.auditDeviceText}>Device: {deviceId}</Text>
+            </View>
             <Button
               title="Return to Dashboard"
               variant="secondary"
@@ -359,14 +375,23 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   deviceVal: {
-    ...Typography.caption,
+    ...Typography.captionBold,
     color: Colors.primaryLight,
+    fontSize: 12,
+  },
+  rulesList: {
+    marginTop: 4,
+    gap: 2,
   },
   antiProxyNotice: {
     ...Typography.caption,
     fontSize: 11,
     color: Colors.textMuted,
-    marginTop: 4,
+    lineHeight: 16,
+  },
+  ruleBold: {
+    fontWeight: '700',
+    color: Colors.textSecondary,
   },
   markButton: {
     marginTop: Spacing.sm,
@@ -390,5 +415,16 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  auditInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: Spacing.sm,
+  },
+  auditDeviceText: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Colors.textMuted,
   },
 });

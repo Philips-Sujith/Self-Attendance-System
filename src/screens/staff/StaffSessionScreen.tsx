@@ -330,6 +330,12 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
                   <View style={styles.studentInfo}>
                     <Text style={styles.studentName}>{student.name}</Text>
                     <Text style={styles.studentRollNo}>Roll: {student.rollNo}</Text>
+                    {student.deviceId && student.status !== 'absent' && (
+                      <View style={styles.deviceAuditBadge}>
+                        <Ionicons name="phone-portrait-outline" size={11} color={Colors.textMuted} />
+                        <Text style={styles.deviceAuditText}>{student.deviceId}</Text>
+                      </View>
+                    )}
                     {student.overrideReason && (
                       <Text style={styles.overrideReasonText}>
                         Audit Note: "{student.overrideReason}"
@@ -629,6 +635,17 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.textSecondary,
     fontSize: 12,
+  },
+  deviceAuditBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  deviceAuditText: {
+    ...Typography.caption,
+    fontSize: 10,
+    color: Colors.textMuted,
   },
   overrideReasonText: {
     ...Typography.caption,
