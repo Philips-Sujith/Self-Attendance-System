@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { AttendanceRecord, AttendanceSession, AttendanceStatus, SessionStatus, VerificationMethod } from '../types';
 import { ENV } from '../config/env';
 import { groupService } from './groupService';
+import { notificationService } from './notificationService';
 
 export interface StartSessionParams {
   groupId: string;
@@ -99,6 +100,14 @@ export const sessionService = {
 
       MOCK_SESSIONS[newSession.id] = newSession;
       MOCK_RECORDS[newSession.id] = [];
+
+      // Send Push Notification Alert
+      notificationService.sendSessionStartNotifications(
+        params.groupName || 'Class',
+        params.groupCode || 'COURSE',
+        newSession
+      );
+
       return { session: newSession, error: null };
     }
 
@@ -121,21 +130,30 @@ export const sessionService = {
 
       if (error) throw error;
 
+      const createdSession: AttendanceSession = {
+        id: data.id,
+        groupId: data.group_id,
+        groupName: params.groupName,
+        groupCode: params.groupCode,
+        staffId: data.staff_id,
+        date: data.date,
+        period: data.period,
+        startTime: data.start_time,
+        endTime: data.end_time,
+        durationMinutes: data.duration_minutes,
+        status: data.status as SessionStatus,
+        networkSessionId: data.network_session_id,
+      };
+
+      // Send Push Notification Alert
+      notificationService.sendSessionStartNotifications(
+        params.groupName || 'Class',
+        params.groupCode || 'COURSE',
+        createdSession
+      );
+
       return {
-        session: {
-          id: data.id,
-          groupId: data.group_id,
-          groupName: params.groupName,
-          groupCode: params.groupCode,
-          staffId: data.staff_id,
-          date: data.date,
-          period: data.period,
-          startTime: data.start_time,
-          endTime: data.end_time,
-          durationMinutes: data.duration_minutes,
-          status: data.status as SessionStatus,
-          networkSessionId: data.network_session_id,
-        },
+        session: createdSession,
         error: null,
       };
     } catch (err: any) {
