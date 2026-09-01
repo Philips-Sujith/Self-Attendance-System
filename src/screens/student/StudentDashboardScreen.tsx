@@ -19,22 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StudentStackParamList } from '../../types/navigation';
 import { groupService } from '../../services/groupService';
-
-// Active mock session that student can mark
-const MOCK_ACTIVE_SESSION: AttendanceSession = {
-  id: 'sess-active-01',
-  groupId: 'grp-001',
-  groupName: 'Digital System Design (DSD)',
-  groupCode: 'CS302',
-  staffId: 'staff-001',
-  date: new Date().toISOString().split('T')[0],
-  period: '09:00 - 10:00 AM',
-  startTime: new Date().toISOString(),
-  endTime: new Date(Date.now() + 4 * 60 * 1000).toISOString(),
-  durationMinutes: 5,
-  status: 'active',
-  networkSessionId: 'SAS-CS302-8F92',
-};
+import { sessionService } from '../../services/sessionService';
 
 export const StudentDashboardScreen: React.FC = () => {
   const { user } = useAuth();
@@ -42,23 +27,27 @@ export const StudentDashboardScreen: React.FC = () => {
   const [courses, setCourses] = useState<CourseGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeSession] = useState<AttendanceSession | null>(MOCK_ACTIVE_SESSION);
+  const [activeSession, setActiveSession] = useState<AttendanceSession | null>(null);
 
-  const fetchCourses = useCallback(async () => {
+  const fetchDashboardData = useCallback(async () => {
     if (!user) return;
-    const data = await groupService.getStudentCourseGroups(user.id);
-    setCourses(data);
+    const [coursesData, sessionData] = await Promise.all([
+      groupService.getStudentCourseGroups(user.id),
+      sessionService.getActiveSessionForStudent(user.id),
+    ]);
+    setCourses(coursesData);
+    setActiveSession(sessionData);
     setIsLoading(false);
     setIsRefreshing(false);
   }, [user]);
 
   useEffect(() => {
-    fetchCourses();
-  }, [fetchCourses]);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const onRefresh = () => {
     setIsRefreshing(true);
-    fetchCourses();
+    fetchDashboardData();
   };
 
   const handleMarkAttendance = () => {
@@ -98,12 +87,14 @@ export const StudentDashboardScreen: React.FC = () => {
           <Card variant="glow" style={styles.activeSessionBanner}>
             <View style={styles.bannerHeader}>
               <Badge label="ATTENDANCE OPEN NOW" variant="warning" dot />
-              <Text style={styles.bannerTimer}>~4 mins left</Text>
+              <Text style={styles.bannerTimer}>~{activeSession.durationMinutes} mins</Text>
             </View>
 
-            <Text style={styles.bannerCourseTitle}>{activeSession.groupName}</Text>
+            <Text style={styles.bannerCourseTitle}>
+              {activeSession.groupName || activeSession.groupCode}
+            </Text>
             <Text style={styles.bannerSubtitle}>
-              Class Period: {activeSession.period} • Proximity WiFi Check Required
+              Class Period: {activeSession.period} • WiFi Proximity Check Required
             </Text>
 
             <Button

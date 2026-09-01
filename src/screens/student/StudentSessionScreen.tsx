@@ -17,13 +17,17 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StudentStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { sessionService } from '../../services/sessionService';
+import {
+  networkProximityService,
+  DiscoveredService,
+  ProximityScanStatus,
+} from '../../services/networkProximityService';
 
 type StudentSessionScreenProps = NativeStackScreenProps<
   StudentStackParamList,
   'StudentMarkAttendance'
 >;
-
-type NetworkScanState = 'scanning' | 'discovered' | 'failed';
 
 export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
   route,
@@ -32,39 +36,73 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
   const { session } = route.params;
   const { user } = useAuth();
 
-  const [scanState, setScanState] = useState<NetworkScanState>('scanning');
+  const [scanStatus, setScanStatus] = useState<ProximityScanStatus>('scanning');
+  const [discoveredService, setDiscoveredService] = useState<DiscoveredService | null>(null);
   const [isMarking, setIsMarking] = useState(false);
   const [isMarked, setIsMarked] = useState(false);
   const [markedTimestamp, setMarkedTimestamp] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Mock mDNS network scan discovery
-  const runNetworkScan = () => {
-    setScanState('scanning');
-    setTimeout(() => {
-      // In Stage 1 mock: simulate successful mDNS discovery
-      setScanState('discovered');
-    }, 2000);
+  const deviceId = 'DEV-PHONE-ENCLAVE-8821';
+
+  // Run mDNS proximity scan
+  const startProximityScan = () => {
+    setErrorMessage(null);
+    setScanStatus('scanning');
+    setDiscoveredService(null);
+    networkProximityService.startScan(session.networkSessionId, 5000);
   };
 
   useEffect(() => {
-    runNetworkScan();
-  }, []);
+    const unsubStatus = networkProximityService.onScanStatus((status) => {
+      setScanStatus(status);
+    });
 
-  const handleMarkAttendance = () => {
-    if (scanState !== 'discovered') {
+    const unsubFound = networkProximityService.onServiceFound((service) => {
+      setDiscoveredService(service);
+      setScanStatus('discovered');
+    });
+
+    startProximityScan();
+
+    return () => {
+      networkProximityService.stopScan();
+      unsubStatus();
+      unsubFound();
+    };
+  }, [session.networkSessionId]);
+
+  const handleMarkAttendance = async () => {
+    if (scanStatus !== 'discovered') {
       Alert.alert(
-        'Proximity Check Failed',
-        'Your device must be verified on the classroom WiFi before attendance can be marked.'
+        'Proximity Check Required',
+        'Your device must be physically verified on the classroom WiFi before attendance can be marked.'
       );
       return;
     }
 
+    if (!user) return;
+
     setIsMarking(true);
-    setTimeout(() => {
-      setIsMarking(false);
-      setIsMarked(true);
-      setMarkedTimestamp(new Date().toLocaleTimeString());
-    }, 800);
+    setErrorMessage(null);
+
+    const result = await sessionService.markAttendanceSelf({
+      sessionId: session.id,
+      studentId: user.id,
+      deviceId,
+      verificationMethod: 'wifi_local_network',
+    });
+
+    setIsMarking(false);
+
+    if (!result.success) {
+      setErrorMessage(result.error || 'Failed to mark attendance.');
+      Alert.alert('Submission Error', result.error || 'Failed to record attendance.');
+      return;
+    }
+
+    setIsMarked(true);
+    setMarkedTimestamp(result.markedAt || new Date().toLocaleTimeString());
   };
 
   return (
@@ -80,43 +118,51 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
           <View style={styles.sessionHeaderRow}>
             <View>
               <Text style={styles.sessionDate}>{session.date}</Text>
-              <Text style={styles.sessionPeriod}>Period: {session.period}</Text>
+              <Text style={styles.sessionPeriod}>Class Period: {session.period}</Text>
             </View>
             <Badge
-              label={isMarked ? 'RECORDED' : 'SESSION OPEN'}
+              label={isMarked ? 'PRESENT (RECORDED)' : 'SESSION ACTIVE'}
               variant={isMarked ? 'success' : 'warning'}
               dot
             />
           </View>
         </Card>
 
-        {/* Local Network Discovery Card */}
+        {/* Error Banner */}
+        {errorMessage && (
+          <View style={styles.errorBanner}>
+            <Ionicons name="alert-circle" size={20} color={Colors.danger} />
+            <Text style={styles.errorBannerText}>{errorMessage}</Text>
+          </View>
+        )}
+
+        {/* Local Network Discovery Radar Card */}
         <Card
           variant={
-            scanState === 'discovered'
+            scanStatus === 'discovered'
               ? 'glow'
-              : scanState === 'failed'
+              : scanStatus === 'error' || scanStatus === 'timeout'
               ? 'bordered'
               : 'elevated'
           }
           style={styles.scanCard}
         >
-          {scanState === 'scanning' && (
+          {scanStatus === 'scanning' && (
             <View style={styles.stateContainer}>
               <ActivityIndicator size="large" color={Colors.secondary} />
-              <Text style={styles.stateTitle}>Checking Classroom Proximity…</Text>
+              <Text style={styles.stateTitle}>Checking you're on the classroom network…</Text>
               <Text style={styles.stateSubtitle}>
-                Scanning local WiFi for teacher's advertised mDNS service...
+                Scanning local WiFi for teacher's advertised mDNS proximity signal...
               </Text>
               <View style={styles.sessionPill}>
                 <Text style={styles.sessionPillText}>
-                  Target: {session.networkSessionId}
+                  Target Session: {session.networkSessionId}
                 </Text>
               </View>
             </View>
           )}
 
-          {scanState === 'discovered' && (
+          {scanStatus === 'discovered' && (
             <View style={styles.stateContainer}>
               <View style={[styles.statusIconCircle, { backgroundColor: Colors.successLight }]}>
                 <Ionicons name="wifi" size={32} color={Colors.success} />
@@ -125,33 +171,32 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
                 Classroom WiFi Verified!
               </Text>
               <Text style={styles.stateSubtitle}>
-                mDNS broadcast signal detected from instructor's phone on local network.
+                mDNS broadcast signal detected from instructor's phone on local network ({discoveredService?.latencyMs || 28}ms).
               </Text>
               <View style={styles.verifiedRow}>
-                <Ionicons name="shield-checkmark" size={14} color={Colors.success} />
+                <Ionicons name="shield-checkmark" size={16} color={Colors.success} />
                 <Text style={styles.verifiedText}>Anti-Proxy Proximity Check Passed</Text>
               </View>
             </View>
           )}
 
-          {scanState === 'failed' && (
+          {(scanStatus === 'timeout' || scanStatus === 'error') && (
             <View style={styles.stateContainer}>
               <View style={[styles.statusIconCircle, { backgroundColor: Colors.dangerLight }]}>
                 <Ionicons name="cloud-offline" size={32} color={Colors.danger} />
               </View>
               <Text style={[styles.stateTitle, { color: Colors.danger }]}>
-                Network Not Detected
+                Couldn't detect classroom network
               </Text>
               <Text style={styles.stateSubtitle}>
-                Couldn't detect classroom network — make sure you are connected to the class WiFi
-                and AP isolation is disabled.
+                Make sure you are connected to the class WiFi and AP client isolation is not blocking peer discovery.
               </Text>
               <Button
                 title="Retry Network Scan"
                 variant="outline"
                 size="sm"
                 iconName="refresh"
-                onPress={runNetworkScan}
+                onPress={startProximityScan}
                 style={{ marginTop: Spacing.md }}
               />
             </View>
@@ -162,11 +207,11 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
         <Card style={styles.deviceCard}>
           <View style={styles.deviceRow}>
             <Ionicons name="phone-portrait-outline" size={18} color={Colors.primaryLight} />
-            <Text style={styles.deviceLabel}>Bound Device ID:</Text>
-            <Text style={styles.deviceVal}>DEV-ENCLAVE-8821</Text>
+            <Text style={styles.deviceLabel}>Bound Device Fingerprint:</Text>
+            <Text style={styles.deviceVal}>{deviceId}</Text>
           </View>
           <Text style={styles.antiProxyNotice}>
-            🔒 Anti-Proxy Rule: One device can only mark for one student account per session.
+            🔒 Anti-Proxy Rule: One device can only submit attendance for ONE student account per session.
           </Text>
         </Card>
 
@@ -177,7 +222,7 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
             <Text style={styles.successTitle}>Attendance Marked!</Text>
             <Text style={styles.successCourse}>{session.groupName}</Text>
             <Text style={styles.successTime}>
-              Recorded at: {markedTimestamp} (Proximity WiFi Verified)
+              Recorded at: {markedTimestamp} (WiFi Proximity Verified)
             </Text>
             <Button
               title="Return to Dashboard"
@@ -190,14 +235,16 @@ export const StudentSessionScreen: React.FC<StudentSessionScreenProps> = ({
         ) : (
           <Button
             title={
-              scanState === 'discovered'
+              scanStatus === 'discovered'
                 ? 'Mark My Attendance'
-                : 'Waiting for Local WiFi Detection…'
+                : scanStatus === 'scanning'
+                ? 'Checking Classroom WiFi…'
+                : 'Proximity Check Required'
             }
             variant="primary"
             size="lg"
             iconName="finger-print"
-            disabled={scanState !== 'discovered'}
+            disabled={scanStatus !== 'discovered'}
             loading={isMarking}
             onPress={handleMarkAttendance}
             style={styles.markButton}
@@ -233,6 +280,21 @@ const styles = StyleSheet.create({
     ...Typography.bodyBold,
     marginTop: 2,
   },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dangerLight,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.danger + '44',
+  },
+  errorBannerText: {
+    ...Typography.captionBold,
+    color: Colors.danger,
+    flex: 1,
+  },
   scanCard: {
     padding: Spacing.xl,
     alignItems: 'center',
@@ -251,7 +313,7 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     ...Typography.h2,
-    fontSize: 18,
+    fontSize: 17,
     textAlign: 'center',
   },
   stateSubtitle: {

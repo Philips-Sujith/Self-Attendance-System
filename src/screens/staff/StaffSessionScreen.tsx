@@ -22,6 +22,7 @@ import { StaffStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { AttendanceStatus } from '../../types';
 import { sessionService, SessionRosterStudent } from '../../services/sessionService';
+import { networkProximityService } from '../../services/networkProximityService';
 
 type StaffSessionScreenProps = NativeStackScreenProps<StaffStackParamList, 'StaffSessionLive'>;
 
@@ -30,7 +31,6 @@ type FilterTab = 'all' | 'present' | 'absent';
 export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, navigation }) => {
   const { session } = route.params;
 
-  // Calculate remaining seconds from endTime
   const calculateInitialSeconds = () => {
     if (session.status !== 'active') return 0;
     const diff = Math.floor((new Date(session.endTime).getTime() - Date.now()) / 1000);
@@ -43,6 +43,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterTab, setFilterTab] = useState<FilterTab>('all');
+  const [isAdvertisingmDNS, setIsAdvertisingmDNS] = useState(false);
 
   // Manual Override Modal state
   const [selectedStudent, setSelectedStudent] = useState<SessionRosterStudent | null>(null);
@@ -51,7 +52,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
   const [isSubmittingOverride, setIsSubmittingOverride] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Fetch session roster and records
+  // Fetch session roster and marks
   const fetchSessionRoster = useCallback(async () => {
     const data = await sessionService.getSessionRosterAndRecords(session.id, session.groupId);
     setRoster(data);
@@ -62,6 +63,26 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
   useEffect(() => {
     fetchSessionRoster();
   }, [fetchSessionRoster]);
+
+  // Start mDNS advertisement and Supabase Realtime subscription on mount
+  useEffect(() => {
+    if (isSessionActive) {
+      // 1. Start mDNS advertising on local network
+      networkProximityService.startAdvertising(session.networkSessionId, session.groupCode).then(() => {
+        setIsAdvertisingmDNS(true);
+      });
+    }
+
+    // 2. Subscribe to live Supabase Realtime stream of marks
+    const unsubscribeRealtime = sessionService.subscribeToSessionAttendance(session.id, () => {
+      fetchSessionRoster();
+    });
+
+    return () => {
+      networkProximityService.stopAdvertising();
+      unsubscribeRealtime();
+    };
+  }, [session.id, session.networkSessionId, session.groupCode, isSessionActive, fetchSessionRoster]);
 
   const onRefresh = () => {
     setIsRefreshing(true);
@@ -76,6 +97,8 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
         if (prev <= 1) {
           clearInterval(timer);
           setIsSessionActive(false);
+          setIsAdvertisingmDNS(false);
+          networkProximityService.stopAdvertising();
           sessionService.closeAttendanceSession(session.id);
           return 0;
         }
@@ -125,21 +148,8 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
       return;
     }
 
-    // Update local roster
-    setRoster((prev) =>
-      prev.map((item) =>
-        item.studentId === selectedStudent.studentId
-          ? {
-              ...item,
-              status: targetStatus,
-              verificationMethod: 'manual_override',
-              overrideReason: overrideReason.trim() || 'Manual adjustment by staff',
-              markedAt: new Date().toLocaleTimeString(),
-            }
-          : item
-      )
-    );
-
+    // Refresh roster
+    fetchSessionRoster();
     setModalVisible(false);
     setSelectedStudent(null);
   };
@@ -155,7 +165,9 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
           style: 'destructive',
           onPress: async () => {
             setIsSessionActive(false);
+            setIsAdvertisingmDNS(false);
             setSecondsRemaining(0);
+            networkProximityService.stopAdvertising();
             await sessionService.closeAttendanceSession(session.id);
           },
         },
@@ -193,7 +205,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
           />
         }
       >
-        {/* Live Attendance Counter & Status */}
+        {/* Live Attendance Counter & Realtime Status */}
         <Card variant="glow" style={styles.liveDashboardCard}>
           <View style={styles.counterRow}>
             <View>
@@ -226,25 +238,28 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
             <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
           </View>
 
-          {/* Session Lifecycle status info */}
-          <View style={styles.lifecycleBanner}>
+          {/* mDNS & Realtime Broadcast Banner */}
+          <View style={styles.broadcastBanner}>
             <Ionicons
-              name={isSessionActive ? 'radio' : 'checkmark-done-circle'}
+              name={isAdvertisingmDNS ? 'wifi' : 'wifi-outline'}
               size={18}
-              color={isSessionActive ? Colors.success : Colors.textMuted}
+              color={isAdvertisingmDNS ? Colors.secondary : Colors.textMuted}
             />
-            <View style={styles.lifecycleTextCol}>
-              <Text style={styles.lifecycleTitle}>
-                {isSessionActive
-                  ? 'Attendance Session in Progress'
-                  : 'Attendance Session Closed'}
+            <View style={styles.broadcastTextCol}>
+              <Text style={styles.broadcastTitle}>
+                {isAdvertisingmDNS
+                  ? 'Advertising mDNS Proximity Signal'
+                  : 'mDNS Broadcast Inactive'}
               </Text>
-              <Text style={styles.lifecycleDesc}>
-                {isSessionActive
-                  ? `Students can self-mark or staff can use manual audit overrides below.`
-                  : `Final attendance rate: ${progressPercent}%. Late marks are rejected.`}
+              <Text style={styles.broadcastDesc}>
+                {session.networkSessionId} (_sas-session._tcp.local) • Realtime Active
               </Text>
             </View>
+            <Badge
+              label={isAdvertisingmDNS ? 'ON AIR' : 'OFF'}
+              variant={isAdvertisingmDNS ? 'secondary' : 'neutral'}
+              size="sm"
+            />
           </View>
         </Card>
 
@@ -284,10 +299,10 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
                 ? `Present Students (${presentCount})`
                 : filterTab === 'absent'
                 ? `Absent Students (${absentCount})`
-                : `Session Roster (${totalCount})`}
+                : `Live Session Roster (${totalCount})`}
             </Text>
             <Text style={styles.sectionSubtitle}>
-              Tap any student to manually mark or adjust status with reason
+              Updates live via Supabase Realtime • Tap student for manual audit override
             </Text>
           </View>
         </View>
@@ -514,29 +529,28 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.success,
     borderRadius: BorderRadius.full,
   },
-  lifecycleBanner: {
+  broadcastBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
     padding: Spacing.sm,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.2)',
+    borderColor: 'rgba(6, 182, 212, 0.25)',
     gap: Spacing.sm,
   },
-  lifecycleTextCol: {
+  broadcastTextCol: {
     flex: 1,
   },
-  lifecycleTitle: {
+  broadcastTitle: {
     ...Typography.captionBold,
-    color: Colors.success,
+    color: Colors.secondary,
     fontSize: 12,
   },
-  lifecycleDesc: {
+  broadcastDesc: {
     ...Typography.caption,
     fontSize: 11,
     color: Colors.textMuted,
-    marginTop: 1,
   },
   filterRow: {
     flexDirection: 'row',
