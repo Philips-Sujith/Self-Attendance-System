@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StaffStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { AttendanceSession } from '../../types';
+import { StaffStartSessionModal } from './StaffStartSessionModal';
 
 type StaffGroupDetailScreenProps = NativeStackScreenProps<
   StaffStackParamList,
@@ -29,6 +31,7 @@ export const StaffGroupDetailScreen: React.FC<StaffGroupDetailScreenProps> = ({
 }) => {
   const { group } = route.params;
   const { user } = useAuth();
+  const [startModalVisible, setStartModalVisible] = useState(false);
 
   const handleShareJoinCode = async () => {
     try {
@@ -41,25 +44,8 @@ export const StaffGroupDetailScreen: React.FC<StaffGroupDetailScreenProps> = ({
     }
   };
 
-  const handleStartSession = () => {
-    navigation.navigate('StaffSessionLive', {
-      session: {
-        id: 'sess-' + Date.now(),
-        groupId: group.id,
-        groupName: group.name,
-        groupCode: group.code,
-        staffId: user?.id || 'staff-001',
-        date: new Date().toISOString().split('T')[0],
-        period: group.schedulePeriod,
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        durationMinutes: 5,
-        status: 'active',
-        networkSessionId: `SAS-${group.code}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-        presentCount: 0,
-        totalStudents: group.studentCount || 85,
-      },
-    });
+  const handleSessionStarted = (session: AttendanceSession) => {
+    navigation.navigate('StaffSessionLive', { session });
   };
 
   return (
@@ -110,7 +96,7 @@ export const StaffGroupDetailScreen: React.FC<StaffGroupDetailScreenProps> = ({
           <View style={styles.infoRow}>
             <Ionicons name="people-outline" size={18} color={Colors.primaryLight} />
             <Text style={styles.infoLabel}>Enrolled Students:</Text>
-            <Text style={styles.infoValue}>{group.studentCount || 85} Students</Text>
+            <Text style={styles.infoValue}>{group.studentCount || 0} Students</Text>
           </View>
         </Card>
 
@@ -121,7 +107,7 @@ export const StaffGroupDetailScreen: React.FC<StaffGroupDetailScreenProps> = ({
             variant="primary"
             size="lg"
             iconName="radio"
-            onPress={handleStartSession}
+            onPress={() => setStartModalVisible(true)}
           />
           <Button
             title="View & Manage Student Roster"
@@ -132,6 +118,17 @@ export const StaffGroupDetailScreen: React.FC<StaffGroupDetailScreenProps> = ({
           />
         </View>
       </ScrollView>
+
+      {/* Start Session Configuration Modal */}
+      {user && (
+        <StaffStartSessionModal
+          visible={startModalVisible}
+          group={group}
+          staffId={user.id}
+          onClose={() => setStartModalVisible(false)}
+          onSessionStarted={handleSessionStarted}
+        />
+      )}
     </SafeAreaView>
   );
 };

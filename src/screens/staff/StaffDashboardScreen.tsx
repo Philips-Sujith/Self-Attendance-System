@@ -14,12 +14,13 @@ import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { CourseGroup } from '../../types';
+import { CourseGroup, AttendanceSession } from '../../types';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StaffStackParamList } from '../../types/navigation';
 import { groupService } from '../../services/groupService';
 import { StaffCreateGroupModal } from './StaffCreateGroupModal';
+import { StaffStartSessionModal } from './StaffStartSessionModal';
 
 export const StaffDashboardScreen: React.FC = () => {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ export const StaffDashboardScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [selectedGroupForSession, setSelectedGroupForSession] = useState<CourseGroup | null>(null);
 
   const fetchGroups = useCallback(async () => {
     if (!user) return;
@@ -54,25 +56,12 @@ export const StaffDashboardScreen: React.FC = () => {
     navigation.navigate('StaffGroupDetail', { group });
   };
 
-  const handleStartQuickSession = (group: CourseGroup) => {
-    navigation.navigate('StaffSessionLive', {
-      session: {
-        id: 'sess-' + Date.now(),
-        groupId: group.id,
-        groupName: group.name,
-        groupCode: group.code,
-        staffId: user?.id || 'staff-001',
-        date: new Date().toISOString().split('T')[0],
-        period: group.schedulePeriod,
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        durationMinutes: 5,
-        status: 'active',
-        networkSessionId: `SAS-${group.code}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-        presentCount: 0,
-        totalStudents: group.studentCount || 0,
-      },
-    });
+  const handleStartSession = (group: CourseGroup) => {
+    setSelectedGroupForSession(group);
+  };
+
+  const handleSessionStarted = (session: AttendanceSession) => {
+    navigation.navigate('StaffSessionLive', { session });
   };
 
   const totalStudents = groups.reduce((acc, g) => acc + (g.studentCount || 0), 0);
@@ -206,7 +195,7 @@ export const StaffDashboardScreen: React.FC = () => {
                     variant="primary"
                     size="sm"
                     iconName="radio-outline"
-                    onPress={() => handleStartQuickSession(item)}
+                    onPress={() => handleStartSession(item)}
                     style={styles.sessionBtn}
                   />
                 </View>
@@ -224,6 +213,17 @@ export const StaffDashboardScreen: React.FC = () => {
           staffName={user.name}
           onClose={() => setCreateModalVisible(false)}
           onGroupCreated={handleGroupCreated}
+        />
+      )}
+
+      {/* Start Session Modal */}
+      {user && selectedGroupForSession && (
+        <StaffStartSessionModal
+          visible={!!selectedGroupForSession}
+          group={selectedGroupForSession}
+          staffId={user.id}
+          onClose={() => setSelectedGroupForSession(null)}
+          onSessionStarted={handleSessionStarted}
         />
       )}
     </SafeAreaView>

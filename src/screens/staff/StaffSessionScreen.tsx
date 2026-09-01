@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   Modal,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { Header } from '../../components/common/Header';
@@ -18,86 +20,55 @@ import { Input } from '../../components/common/Input';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StaffStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
-import { AttendanceRecord, AttendanceStatus } from '../../types';
+import { AttendanceStatus } from '../../types';
+import { sessionService, SessionRosterStudent } from '../../services/sessionService';
 
 type StaffSessionScreenProps = NativeStackScreenProps<StaffStackParamList, 'StaffSessionLive'>;
 
-interface MockStudentRosterItem {
-  id: string;
-  name: string;
-  rollNo: string;
-  status: AttendanceStatus | 'absent';
-  markedAt?: string;
-  overrideReason?: string;
-  verificationMethod?: 'wifi_local_network' | 'manual_override';
-  deviceId?: string;
-}
-
-const INITIAL_ROSTER: MockStudentRosterItem[] = [
-  {
-    id: 's1',
-    name: 'Alex Johnson',
-    rollNo: '21CS1085',
-    status: 'present',
-    markedAt: '09:02:15 AM',
-    verificationMethod: 'wifi_local_network',
-    deviceId: 'DEV-IPHONE-9981',
-  },
-  {
-    id: 's2',
-    name: 'Priya Sharma',
-    rollNo: '21CS1086',
-    status: 'present',
-    markedAt: '09:02:44 AM',
-    verificationMethod: 'wifi_local_network',
-    deviceId: 'DEV-PIXEL-4122',
-  },
-  {
-    id: 's3',
-    name: 'Rahul Verma',
-    rollNo: '21CS1087',
-    status: 'present',
-    markedAt: '09:03:02 AM',
-    verificationMethod: 'wifi_local_network',
-    deviceId: 'DEV-SAMS-7719',
-  },
-  {
-    id: 's4',
-    name: 'Sneha Patel',
-    rollNo: '21CS1088',
-    status: 'absent',
-  },
-  {
-    id: 's5',
-    name: 'Vikram Mehta',
-    rollNo: '21CS1089',
-    status: 'absent',
-  },
-  {
-    id: 's6',
-    name: 'Ananya Rao',
-    rollNo: '21CS1090',
-    status: 'manual_override',
-    markedAt: '09:04:10 AM',
-    verificationMethod: 'manual_override',
-    overrideReason: 'WiFi client isolation glitch on phone',
-    deviceId: 'DEV-MANUAL-001',
-  },
-];
+type FilterTab = 'all' | 'present' | 'absent';
 
 export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, navigation }) => {
   const { session } = route.params;
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(session.durationMinutes * 60);
+
+  // Calculate remaining seconds from endTime
+  const calculateInitialSeconds = () => {
+    if (session.status !== 'active') return 0;
+    const diff = Math.floor((new Date(session.endTime).getTime() - Date.now()) / 1000);
+    return Math.max(0, diff > 0 ? diff : session.durationMinutes * 60);
+  };
+
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(calculateInitialSeconds);
   const [isSessionActive, setIsSessionActive] = useState<boolean>(session.status === 'active');
-  const [roster, setRoster] = useState<MockStudentRosterItem[]>(INITIAL_ROSTER);
+  const [roster, setRoster] = useState<SessionRosterStudent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [filterTab, setFilterTab] = useState<FilterTab>('all');
 
   // Manual Override Modal state
-  const [selectedStudent, setSelectedStudent] = useState<MockStudentRosterItem | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<SessionRosterStudent | null>(null);
   const [overrideReason, setOverrideReason] = useState<string>('');
   const [targetStatus, setTargetStatus] = useState<AttendanceStatus>('present');
+  const [isSubmittingOverride, setIsSubmittingOverride] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Timer countdown
+  // Fetch session roster and records
+  const fetchSessionRoster = useCallback(async () => {
+    const data = await sessionService.getSessionRosterAndRecords(session.id, session.groupId);
+    setRoster(data);
+    setIsLoading(false);
+    setIsRefreshing(false);
+  }, [session.id, session.groupId]);
+
+  useEffect(() => {
+    fetchSessionRoster();
+  }, [fetchSessionRoster]);
+
+  const onRefresh = () => {
+    setIsRefreshing(true);
+    fetchSessionRoster();
+  };
+
+  // Timer countdown and auto-close
   useEffect(() => {
     if (!isSessionActive || secondsRemaining <= 0) return;
     const timer = setInterval(() => {
@@ -105,6 +76,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
         if (prev <= 1) {
           clearInterval(timer);
           setIsSessionActive(false);
+          sessionService.closeAttendanceSession(session.id);
           return 0;
         }
         return prev - 1;
@@ -112,7 +84,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isSessionActive, secondsRemaining]);
+  }, [isSessionActive, secondsRemaining, session.id]);
 
   const formatTimer = (totalSecs: number) => {
     const mins = Math.floor(totalSecs / 60);
@@ -121,29 +93,45 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
   };
 
   const presentCount = roster.filter((r) => r.status !== 'absent').length;
+  const absentCount = roster.filter((r) => r.status === 'absent').length;
   const totalCount = roster.length;
-  const progressPercent = Math.round((presentCount / totalCount) * 100);
+  const progressPercent = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
 
-  const handleOpenOverrideModal = (student: MockStudentRosterItem) => {
+  const handleOpenOverrideModal = (student: SessionRosterStudent) => {
     setSelectedStudent(student);
     setTargetStatus(student.status === 'absent' ? 'present' : 'absent');
-    setOverrideReason('');
+    setOverrideReason(student.overrideReason || '');
     setModalVisible(true);
   };
 
-  const handleApplyOverride = () => {
+  const handleApplyOverride = async () => {
     if (!selectedStudent) return;
     if (targetStatus !== 'absent' && !overrideReason.trim()) {
       Alert.alert('Reason Required', 'Every manual status override requires a brief audit reason.');
       return;
     }
 
+    setIsSubmittingOverride(true);
+    const result = await sessionService.manualRecordOverride({
+      sessionId: session.id,
+      studentId: selectedStudent.studentId,
+      status: targetStatus,
+      reason: overrideReason.trim(),
+    });
+    setIsSubmittingOverride(false);
+
+    if (!result.success) {
+      Alert.alert('Error', result.error || 'Failed to save override.');
+      return;
+    }
+
+    // Update local roster
     setRoster((prev) =>
       prev.map((item) =>
-        item.id === selectedStudent.id
+        item.studentId === selectedStudent.studentId
           ? {
               ...item,
-              status: targetStatus === 'absent' ? 'absent' : 'manual_override',
+              status: targetStatus,
               verificationMethod: 'manual_override',
               overrideReason: overrideReason.trim() || 'Manual adjustment by staff',
               markedAt: new Date().toLocaleTimeString(),
@@ -165,19 +153,26 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
         {
           text: 'End Session',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             setIsSessionActive(false);
             setSecondsRemaining(0);
+            await sessionService.closeAttendanceSession(session.id);
           },
         },
       ]
     );
   };
 
+  const filteredRoster = roster.filter((item) => {
+    if (filterTab === 'present') return item.status !== 'absent';
+    if (filterTab === 'absent') return item.status === 'absent';
+    return true;
+  });
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <Header
-        title={session.groupCode || 'CS302'}
+        title={session.groupCode || 'Attendance Session'}
         subtitle={`Session: ${session.date} • ${session.period}`}
         showBack
         rightElement={
@@ -188,7 +183,16 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
           />
         }
       />
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.primaryLight}
+          />
+        }
+      >
         {/* Live Attendance Counter & Status */}
         <Card variant="glow" style={styles.liveDashboardCard}>
           <View style={styles.counterRow}>
@@ -203,15 +207,16 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
               <Ionicons
                 name="timer-outline"
                 size={18}
-                color={secondsRemaining < 60 ? Colors.danger : Colors.primaryLight}
+                color={secondsRemaining < 60 && isSessionActive ? Colors.danger : Colors.primaryLight}
               />
               <Text
                 style={[
                   styles.timerText,
-                  secondsRemaining < 60 && { color: Colors.danger },
+                  secondsRemaining < 60 && isSessionActive && { color: Colors.danger },
+                  !isSessionActive && { color: Colors.textMuted },
                 ]}
               >
-                {formatTimer(secondsRemaining)}
+                {isSessionActive ? formatTimer(secondsRemaining) : 'Closed'}
               </Text>
             </View>
           </View>
@@ -221,79 +226,131 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
             <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
           </View>
 
-          {/* Local Network mDNS Broadcast status */}
-          <View style={styles.broadcastBanner}>
+          {/* Session Lifecycle status info */}
+          <View style={styles.lifecycleBanner}>
             <Ionicons
-              name={isSessionActive ? 'wifi' : 'wifi-outline'}
+              name={isSessionActive ? 'radio' : 'checkmark-done-circle'}
               size={18}
-              color={isSessionActive ? Colors.secondary : Colors.textMuted}
+              color={isSessionActive ? Colors.success : Colors.textMuted}
             />
-            <View style={styles.broadcastTextCol}>
-              <Text style={styles.broadcastTitle}>
-                {isSessionActive ? 'Advertising mDNS Service' : 'mDNS Broadcast Inactive'}
+            <View style={styles.lifecycleTextCol}>
+              <Text style={styles.lifecycleTitle}>
+                {isSessionActive
+                  ? 'Attendance Session in Progress'
+                  : 'Attendance Session Closed'}
               </Text>
-              <Text style={styles.broadcastDesc}>
-                {session.networkSessionId} (_sas-session._tcp.local)
+              <Text style={styles.lifecycleDesc}>
+                {isSessionActive
+                  ? `Students can self-mark or staff can use manual audit overrides below.`
+                  : `Final attendance rate: ${progressPercent}%. Late marks are rejected.`}
               </Text>
             </View>
           </View>
         </Card>
 
+        {/* Filter Tabs */}
+        <View style={styles.filterRow}>
+          <TouchableOpacity
+            style={[styles.tabChip, filterTab === 'all' && styles.tabChipActive]}
+            onPress={() => setFilterTab('all')}
+          >
+            <Text style={[styles.tabText, filterTab === 'all' && styles.tabTextActive]}>
+              All ({totalCount})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabChip, filterTab === 'present' && styles.tabChipActive]}
+            onPress={() => setFilterTab('present')}
+          >
+            <Text style={[styles.tabText, filterTab === 'present' && styles.tabTextActive]}>
+              Present ({presentCount})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabChip, filterTab === 'absent' && styles.tabChipActive]}
+            onPress={() => setFilterTab('absent')}
+          >
+            <Text style={[styles.tabText, filterTab === 'absent' && styles.tabTextActive]}>
+              Absent ({absentCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Live Roster & Manual Override Section */}
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionTitle}>Session Roster ({totalCount})</Text>
+            <Text style={styles.sectionTitle}>
+              {filterTab === 'present'
+                ? `Present Students (${presentCount})`
+                : filterTab === 'absent'
+                ? `Absent Students (${absentCount})`
+                : `Session Roster (${totalCount})`}
+            </Text>
             <Text style={styles.sectionSubtitle}>
-              Tap any student for manual audit override
+              Tap any student to manually mark or adjust status with reason
             </Text>
           </View>
         </View>
 
         {/* Student List */}
-        <View style={styles.rosterList}>
-          {roster.map((student) => (
-            <Card
-              key={student.id}
-              style={styles.studentCard}
-              onPress={() => handleOpenOverrideModal(student)}
-            >
-              <View style={styles.studentCardContent}>
-                <View style={styles.studentInfo}>
-                  <Text style={styles.studentName}>{student.name}</Text>
-                  <Text style={styles.studentRollNo}>{student.rollNo}</Text>
-                  {student.overrideReason && (
-                    <Text style={styles.overrideReasonText}>
-                      Reason: "{student.overrideReason}"
-                    </Text>
-                  )}
-                </View>
+        {isLoading ? (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" color={Colors.primaryLight} />
+            <Text style={styles.loadingText}>Loading session roster…</Text>
+          </View>
+        ) : filteredRoster.length === 0 ? (
+          <Card variant="bordered" style={styles.emptyCard}>
+            <Ionicons name="people-outline" size={40} color={Colors.textMuted} />
+            <Text style={styles.emptyTitle}>No Students in this View</Text>
+          </Card>
+        ) : (
+          <View style={styles.rosterList}>
+            {filteredRoster.map((student) => (
+              <Card
+                key={student.studentId}
+                style={styles.studentCard}
+                onPress={() => handleOpenOverrideModal(student)}
+              >
+                <View style={styles.studentCardContent}>
+                  <View style={styles.studentInfo}>
+                    <Text style={styles.studentName}>{student.name}</Text>
+                    <Text style={styles.studentRollNo}>Roll: {student.rollNo}</Text>
+                    {student.overrideReason && (
+                      <Text style={styles.overrideReasonText}>
+                        Audit Note: "{student.overrideReason}"
+                      </Text>
+                    )}
+                  </View>
 
-                <View style={styles.statusCol}>
-                  <Badge
-                    label={
-                      student.status === 'present'
-                        ? 'Present (WiFi)'
-                        : student.status === 'manual_override'
-                        ? 'Override'
-                        : 'Absent'
-                    }
-                    variant={
-                      student.status === 'present'
-                        ? 'success'
-                        : student.status === 'manual_override'
-                        ? 'warning'
-                        : 'danger'
-                    }
-                    size="sm"
-                  />
-                  {student.markedAt && (
-                    <Text style={styles.markedAtText}>{student.markedAt}</Text>
-                  )}
+                  <View style={styles.statusCol}>
+                    <Badge
+                      label={
+                        student.status === 'present'
+                          ? 'Present (WiFi)'
+                          : student.status === 'manual_override'
+                          ? 'Override'
+                          : student.status === 'late'
+                          ? 'Late'
+                          : 'Absent'
+                      }
+                      variant={
+                        student.status === 'present'
+                          ? 'success'
+                          : student.status === 'manual_override' || student.status === 'late'
+                          ? 'warning'
+                          : 'danger'
+                      }
+                      size="sm"
+                    />
+                    {student.markedAt && (
+                      <Text style={styles.markedAtText}>{student.markedAt}</Text>
+                    )}
+                  </View>
                 </View>
-              </View>
-            </Card>
-          ))}
-        </View>
+              </Card>
+            ))}
+          </View>
+        )}
 
         {/* Session Action Footer */}
         {isSessionActive && (
@@ -336,7 +393,18 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
                 onPress={() => setTargetStatus('present')}
               >
                 <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
-                <Text style={styles.statusOptionText}>Mark Present</Text>
+                <Text style={styles.statusOptionText}>Present</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.statusOption,
+                  targetStatus === 'late' && styles.statusOptionActiveWarning,
+                ]}
+                onPress={() => setTargetStatus('late')}
+              >
+                <Ionicons name="time" size={18} color={Colors.warning} />
+                <Text style={styles.statusOptionText}>Late</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -347,17 +415,19 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
                 onPress={() => setTargetStatus('absent')}
               >
                 <Ionicons name="close-circle" size={18} color={Colors.danger} />
-                <Text style={styles.statusOptionText}>Mark Absent</Text>
+                <Text style={styles.statusOptionText}>Absent</Text>
               </TouchableOpacity>
             </View>
 
-            <Input
-              label="Audit Reason (Required)"
-              placeholder="e.g. WiFi issue / Late with permission"
-              value={overrideReason}
-              onChangeText={setOverrideReason}
-              containerStyle={{ marginTop: Spacing.md }}
-            />
+            {targetStatus !== 'absent' && (
+              <Input
+                label="Audit Reason (Mandatory)"
+                placeholder="e.g. Phone battery died / Verified in seat"
+                value={overrideReason}
+                onChangeText={setOverrideReason}
+                containerStyle={{ marginTop: Spacing.md }}
+              />
+            )}
 
             <View style={styles.modalButtons}>
               <Button
@@ -369,6 +439,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
               <Button
                 title="Confirm & Save"
                 variant="primary"
+                loading={isSubmittingOverride}
                 onPress={handleApplyOverride}
                 style={{ flex: 1 }}
               />
@@ -387,6 +458,7 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: Spacing.md,
+    paddingBottom: Spacing.xxl,
     gap: Spacing.md,
   },
   liveDashboardCard: {
@@ -442,28 +514,54 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.success,
     borderRadius: BorderRadius.full,
   },
-  broadcastBanner: {
+  lifecycleBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
     padding: Spacing.sm,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.25)',
+    borderColor: 'rgba(16, 185, 129, 0.2)',
     gap: Spacing.sm,
   },
-  broadcastTextCol: {
+  lifecycleTextCol: {
     flex: 1,
   },
-  broadcastTitle: {
+  lifecycleTitle: {
     ...Typography.captionBold,
-    color: Colors.secondary,
+    color: Colors.success,
     fontSize: 12,
   },
-  broadcastDesc: {
+  lifecycleDesc: {
     ...Typography.caption,
     fontSize: 11,
     color: Colors.textMuted,
+    marginTop: 1,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  tabChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    alignItems: 'center',
+  },
+  tabChipActive: {
+    backgroundColor: Colors.primaryGlow,
+    borderColor: Colors.primaryLight,
+  },
+  tabText: {
+    ...Typography.captionBold,
+    color: Colors.textMuted,
+    fontSize: 12,
+  },
+  tabTextActive: {
+    color: Colors.primaryLight,
   },
   sectionHeader: {
     marginTop: Spacing.xs,
@@ -474,6 +572,24 @@ const styles = StyleSheet.create({
   },
   sectionSubtitle: {
     ...Typography.caption,
+    color: Colors.textMuted,
+  },
+  loaderContainer: {
+    padding: Spacing.xxl,
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  loadingText: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    padding: Spacing.xl,
+    marginTop: Spacing.md,
+  },
+  emptyTitle: {
+    ...Typography.h3,
     color: Colors.textMuted,
   },
   rosterList: {
@@ -552,7 +668,7 @@ const styles = StyleSheet.create({
   },
   statusSelectRow: {
     flexDirection: 'row',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   statusOption: {
     flex: 1,
@@ -570,17 +686,21 @@ const styles = StyleSheet.create({
     borderColor: Colors.success,
     backgroundColor: Colors.successLight,
   },
+  statusOptionActiveWarning: {
+    borderColor: Colors.warning,
+    backgroundColor: Colors.warningLight,
+  },
   statusOptionActiveDanger: {
     borderColor: Colors.danger,
     backgroundColor: Colors.dangerLight,
   },
   statusOptionText: {
     ...Typography.bodyBold,
-    fontSize: 13,
+    fontSize: 12,
   },
   modalButtons: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    marginTop: Spacing.md,
+    marginTop: Spacing.lg,
   },
 });
