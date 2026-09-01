@@ -116,6 +116,30 @@ export const StaffGroupDetailScreen: React.FC<StaffGroupDetailScreenProps> = ({
             iconName="people"
             onPress={() => navigation.navigate('StaffRoster', { group })}
           />
+          <Button
+            title="Attendance Analytics & CSV Export"
+            variant="outline"
+            size="md"
+            iconName="document-text"
+            onPress={() =>
+              navigation.navigate('StaffSessionReport', {
+                session: {
+                  id: 'sess-active-01',
+                  groupId: group.id,
+                  groupName: group.name,
+                  groupCode: group.code,
+                  staffId: group.staffId,
+                  date: new Date().toISOString().split('T')[0],
+                  period: group.schedulePeriod || '09:00 AM',
+                  startTime: new Date().toISOString(),
+                  endTime: new Date().toISOString(),
+                  durationMinutes: 5,
+                  status: 'closed',
+                  networkSessionId: `SAS-${group.code}-REPORT`,
+                },
+              })
+            }
+          />
         </View>
       </ScrollView>
 
