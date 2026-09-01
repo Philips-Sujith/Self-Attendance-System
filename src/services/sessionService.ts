@@ -1,6 +1,10 @@
+// ==============================================================================
+// SAS — Attendance Session & Realtime Service (Pure Supabase Implementation)
+// Zero Mock Data — Real PostgreSQL Database as Single Source of Truth
+// ==============================================================================
+
 import { supabase } from './supabase';
 import { AttendanceRecord, AttendanceSession, AttendanceStatus, SessionStatus, VerificationMethod } from '../types';
-import { ENV } from '../config/env';
 import { groupService } from './groupService';
 import { notificationService } from './notificationService';
 
@@ -28,88 +32,15 @@ export interface SessionRosterStudent {
   recordId?: string;
 }
 
-// In-memory fallback session records
-let MOCK_SESSIONS: { [id: string]: AttendanceSession } = {
-  'sess-active-01': {
-    id: 'sess-active-01',
-    groupId: 'grp-001',
-    groupName: 'Digital System Design (DSD)',
-    groupCode: 'CS302',
-    staffId: 'staff-001',
-    date: new Date().toISOString().split('T')[0],
-    period: '09:00 - 10:00 AM',
-    startTime: new Date().toISOString(),
-    endTime: new Date(Date.now() + 4 * 60 * 1000).toISOString(),
-    durationMinutes: 5,
-    status: 'active',
-    networkSessionId: 'SAS-CS302-8F92',
-  },
-};
-
-let MOCK_RECORDS: { [sessionId: string]: AttendanceRecord[] } = {
-  'sess-active-01': [
-    {
-      id: 'rec-01',
-      sessionId: 'sess-active-01',
-      studentId: 'student-002',
-      markedAt: new Date(Date.now() - 60000).toISOString(),
-      verificationMethod: 'wifi_local_network',
-      deviceId: 'DEV-IPHONE-1022',
-      status: 'present',
-    },
-    {
-      id: 'rec-02',
-      sessionId: 'sess-active-01',
-      studentId: 'student-003',
-      markedAt: new Date(Date.now() - 45000).toISOString(),
-      verificationMethod: 'wifi_local_network',
-      deviceId: 'DEV-SAMS-9912',
-      status: 'present',
-    },
-  ],
-};
-
-type RecordChangeCallback = (records: AttendanceRecord[]) => void;
-const realtimeSubscribers = new Map<string, Set<RecordChangeCallback>>();
-
 export const sessionService = {
-  // Start a new Attendance Session
+  // Start a new Attendance Session in Supabase
   startAttendanceSession: async (
     params: StartSessionParams
   ): Promise<{ session: AttendanceSession | null; error: Error | null }> => {
     const startTime = new Date();
     const endTime = new Date(startTime.getTime() + params.durationMinutes * 60 * 1000);
     const dateStr = params.date || startTime.toISOString().split('T')[0];
-    const networkSessionId = `SAS-${params.groupCode || 'COURSE'}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-    if (!ENV.isSupabaseConfigured()) {
-      const newSession: AttendanceSession = {
-        id: 'sess-' + Date.now(),
-        groupId: params.groupId,
-        groupName: params.groupName,
-        groupCode: params.groupCode,
-        staffId: params.staffId,
-        date: dateStr,
-        period: params.period,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        durationMinutes: params.durationMinutes,
-        status: 'active',
-        networkSessionId,
-      };
-
-      MOCK_SESSIONS[newSession.id] = newSession;
-      MOCK_RECORDS[newSession.id] = [];
-
-      // Send Push Notification Alert
-      notificationService.sendSessionStartNotifications(
-        params.groupName || 'Class',
-        params.groupCode || 'COURSE',
-        newSession
-      );
-
-      return { session: newSession, error: null };
-    }
+    const networkSessionId = `SAS-${params.groupCode || 'CLASS'}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     try {
       const { data, error } = await supabase
@@ -118,7 +49,7 @@ export const sessionService = {
           group_id: params.groupId,
           staff_id: params.staffId,
           date: dateStr,
-          period: params.period,
+          period: params.period.trim(),
           start_time: startTime.toISOString(),
           end_time: endTime.toISOString(),
           duration_minutes: params.durationMinutes,
@@ -129,6 +60,7 @@ export const sessionService = {
         .single();
 
       if (error) throw error;
+      if (!data) throw new Error('Failed to create attendance session.');
 
       const createdSession: AttendanceSession = {
         id: data.id,
@@ -145,10 +77,10 @@ export const sessionService = {
         networkSessionId: data.network_session_id,
       };
 
-      // Send Push Notification Alert
+      // Dispatch Push Notification Alert to Enrolled Students
       notificationService.sendSessionStartNotifications(
-        params.groupName || 'Class',
-        params.groupCode || 'COURSE',
+        params.groupName || 'Course',
+        params.groupCode || 'CLASS',
         createdSession
       );
 
@@ -157,6 +89,7 @@ export const sessionService = {
         error: null,
       };
     } catch (err: any) {
+      console.error('Supabase startAttendanceSession error:', err);
       return { session: null, error: err };
     }
   },
@@ -171,58 +104,26 @@ export const sessionService = {
     const timestamp = new Date().toISOString();
     const verificationMethod = params.verificationMethod || 'wifi_local_network';
 
-    if (!ENV.isSupabaseConfigured()) {
-      const session = MOCK_SESSIONS[params.sessionId];
-      if (!session || session.status !== 'active') {
-        return { success: false, error: 'This session is closed. Late attendance cannot be marked.' };
-      }
-
-      let records = MOCK_RECORDS[params.sessionId] || [];
-      const alreadyMarked = records.some((r) => r.studentId === params.studentId);
-      if (alreadyMarked) {
-        return { success: false, error: 'You have already marked attendance for this session.' };
-      }
-
-      const duplicateDevice = records.some((r) => r.deviceId === params.deviceId);
-      if (duplicateDevice) {
-        return { success: false, error: 'Anti-Proxy Triggered: This device has already been used to mark attendance for another student account.' };
-      }
-
-      const newRecord: AttendanceRecord = {
-        id: 'rec-' + Date.now(),
-        sessionId: params.sessionId,
-        studentId: params.studentId,
-        markedAt: timestamp,
-        verificationMethod,
-        deviceId: params.deviceId,
-        status: 'present',
-      };
-
-      records.push(newRecord);
-      MOCK_RECORDS[params.sessionId] = records;
-
-      // Trigger local realtime subscribers
-      const subs = realtimeSubscribers.get(params.sessionId);
-      if (subs) {
-        subs.forEach((cb) => cb([...records]));
-      }
-
-      return { success: true, markedAt: new Date(timestamp).toLocaleTimeString() };
-    }
-
     try {
-      // 1. Check if session is active
+      // 1. Verify session is currently active
       const { data: session, error: sessErr } = await supabase
         .from('attendance_sessions')
         .select('status, end_time')
         .eq('id', params.sessionId)
-        .single();
+        .maybeSingle();
 
-      if (sessErr || !session || session.status !== 'active') {
-        return { success: false, error: 'This attendance session has ended. Please request a manual override from your instructor.' };
+      if (sessErr || !session) {
+        return { success: false, error: 'Attendance session not found or has ended.' };
       }
 
-      // 2. Insert attendance record
+      if (session.status !== 'active' || new Date(session.end_time).getTime() < Date.now()) {
+        return {
+          success: false,
+          error: 'This attendance session is now closed. Please request a manual override from your instructor.',
+        };
+      }
+
+      // 2. Insert attendance record into Supabase (Anti-Proxy database constraints enforced)
       const { data, error } = await supabase
         .from('attendance_records')
         .insert({
@@ -239,16 +140,26 @@ export const sessionService = {
       if (error) {
         if (error.code === '23505') {
           if (error.message?.includes('unique_session_device')) {
-            return { success: false, error: 'Anti-Proxy Rule: This device has already been used for another student in this session.' };
+            return {
+              success: false,
+              error: 'Anti-Proxy Triggered: This physical device has already submitted attendance for another student account in this session.',
+            };
           }
-          return { success: false, error: 'You have already marked your attendance for this session.' };
+          return {
+            success: false,
+            error: 'You have already marked your attendance for this session.',
+          };
         }
         throw error;
       }
 
-      return { success: true, markedAt: new Date(timestamp).toLocaleTimeString() };
+      return {
+        success: true,
+        markedAt: new Date(data.marked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Failed to mark attendance.' };
+      console.error('Supabase markAttendanceSelf error:', err);
+      return { success: false, error: err.message || 'Database error while marking attendance.' };
     }
   },
 
@@ -258,25 +169,8 @@ export const sessionService = {
     groupId: string
   ): Promise<SessionRosterStudent[]> => {
     const enrolledStudents = await groupService.getCourseGroupRoster(groupId);
-
-    if (!ENV.isSupabaseConfigured()) {
-      const records = MOCK_RECORDS[sessionId] || [];
-      return enrolledStudents.map((student) => {
-        const mark = records.find((r) => r.studentId === student.studentId);
-        return {
-          studentId: student.studentId,
-          name: student.name,
-          rollNo: student.rollNo,
-          email: student.email,
-          department: student.department,
-          status: mark ? mark.status : 'absent',
-          markedAt: mark?.markedAt ? new Date(mark.markedAt).toLocaleTimeString() : undefined,
-          verificationMethod: mark?.verificationMethod,
-          overrideReason: mark?.overrideReason,
-          deviceId: mark?.deviceId,
-          recordId: mark?.id,
-        };
-      });
+    if (!enrolledStudents || enrolledStudents.length === 0) {
+      return [];
     }
 
     try {
@@ -299,14 +193,17 @@ export const sessionService = {
           email: student.email,
           department: student.department,
           status: mark ? (mark.status as AttendanceStatus) : 'absent',
-          markedAt: mark?.marked_at ? new Date(mark.marked_at).toLocaleTimeString() : undefined,
+          markedAt: mark?.marked_at
+            ? new Date(mark.marked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : undefined,
           verificationMethod: mark?.verification_method,
           overrideReason: mark?.override_reason,
           deviceId: mark?.device_id,
           recordId: mark?.id,
         };
       });
-    } catch (e) {
+    } catch (err) {
+      console.error('Error in getSessionRosterAndRecords:', err);
       return enrolledStudents.map((s) => ({
         studentId: s.studentId,
         name: s.name,
@@ -323,26 +220,8 @@ export const sessionService = {
     sessionId: string,
     onRecordChange: () => void
   ): (() => void) => {
-    if (!ENV.isSupabaseConfigured()) {
-      let subs = realtimeSubscribers.get(sessionId);
-      if (!subs) {
-        subs = new Set();
-        realtimeSubscribers.set(sessionId, subs);
-      }
-      const cb = () => onRecordChange();
-      subs.add(cb);
-
-      return () => {
-        const currentSubs = realtimeSubscribers.get(sessionId);
-        if (currentSubs) {
-          currentSubs.delete(cb);
-        }
-      };
-    }
-
-    // Live Supabase Realtime Channel
     const channel = supabase
-      .channel(`live-session-${sessionId}`)
+      .channel(`session-realtime-${sessionId}`)
       .on(
         'postgres_changes',
         {
@@ -376,14 +255,21 @@ export const sessionService = {
 
   // Get active session for student's enrolled courses
   getActiveSessionForStudent: async (studentId: string): Promise<AttendanceSession | null> => {
-    if (!ENV.isSupabaseConfigured()) {
-      const active = Object.values(MOCK_SESSIONS).find((s) => s.status === 'active');
-      return active || null;
-    }
-
     try {
-      // Find active sessions in courses student belongs to
-      const { data, error } = await supabase
+      // 1. Get group IDs student belongs to
+      const { data: memberships, error: memErr } = await supabase
+        .from('group_memberships')
+        .select('group_id')
+        .eq('student_id', studentId);
+
+      if (memErr || !memberships || memberships.length === 0) {
+        return null;
+      }
+
+      const groupIds = memberships.map((m) => m.group_id);
+
+      // 2. Find any active session for these groups
+      const { data: session, error: sessErr } = await supabase
         .from('attendance_sessions')
         .select(`
           id,
@@ -403,30 +289,61 @@ export const sessionService = {
             section
           )
         `)
+        .in('group_id', groupIds)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (error || !data) return null;
+      if (sessErr || !session) return null;
 
-      const group: any = data.course_groups;
+      const group: any = session.course_groups;
       return {
-        id: data.id,
-        groupId: data.group_id,
+        id: session.id,
+        groupId: session.group_id,
         groupName: group?.name || 'Active Course',
         groupCode: group?.code || 'CLASS',
-        staffId: data.staff_id,
-        date: data.date,
-        period: data.period,
-        startTime: data.start_time,
-        endTime: data.end_time,
-        durationMinutes: data.duration_minutes,
-        status: data.status as SessionStatus,
-        networkSessionId: data.network_session_id,
+        staffId: session.staff_id,
+        date: session.date,
+        period: session.period,
+        startTime: session.start_time,
+        endTime: session.end_time,
+        durationMinutes: session.duration_minutes,
+        status: session.status as SessionStatus,
+        networkSessionId: session.network_session_id,
       };
-    } catch (e) {
+    } catch (err) {
+      console.error('Error fetching active session for student:', err);
       return null;
+    }
+  },
+
+  // Get all past sessions for a Course Group
+  getCourseSessions: async (groupId: string): Promise<AttendanceSession[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('attendance_sessions')
+        .select('*')
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) return [];
+
+      return data.map((d: any) => ({
+        id: d.id,
+        groupId: d.group_id,
+        staffId: d.staff_id,
+        date: d.date,
+        period: d.period,
+        startTime: d.start_time,
+        endTime: d.end_time,
+        durationMinutes: d.duration_minutes,
+        status: d.status as SessionStatus,
+        networkSessionId: d.network_session_id,
+      }));
+    } catch (err) {
+      console.error('Error fetching course sessions:', err);
+      return [];
     }
   },
 
@@ -438,36 +355,6 @@ export const sessionService = {
     reason: string;
   }): Promise<{ success: boolean; error?: string }> => {
     const timestamp = new Date().toISOString();
-
-    if (!ENV.isSupabaseConfigured()) {
-      let records = MOCK_RECORDS[params.sessionId] || [];
-      const existingIdx = records.findIndex((r) => r.studentId === params.studentId);
-
-      if (params.status === 'absent') {
-        if (existingIdx >= 0) records.splice(existingIdx, 1);
-      } else {
-        const newRecord: AttendanceRecord = {
-          id: 'rec-' + Date.now(),
-          sessionId: params.sessionId,
-          studentId: params.studentId,
-          markedAt: timestamp,
-          verificationMethod: 'manual_override',
-          deviceId: 'STAFF_MANUAL_OVERRIDE',
-          status: params.status,
-          overrideReason: params.reason,
-        };
-
-        if (existingIdx >= 0) records[existingIdx] = newRecord;
-        else records.push(newRecord);
-      }
-
-      MOCK_RECORDS[params.sessionId] = records;
-
-      const subs = realtimeSubscribers.get(params.sessionId);
-      if (subs) subs.forEach((cb) => cb([...records]));
-
-      return { success: true };
-    }
 
     try {
       if (params.status === 'absent') {
@@ -499,27 +386,23 @@ export const sessionService = {
       if (error) throw error;
       return { success: true };
     } catch (err: any) {
+      console.error('Supabase manualRecordOverride error:', err);
       return { success: false, error: err.message || 'Failed to save status override.' };
     }
   },
 
   // Close an active Attendance Session
   closeAttendanceSession: async (sessionId: string): Promise<boolean> => {
-    if (!ENV.isSupabaseConfigured()) {
-      if (MOCK_SESSIONS[sessionId]) {
-        MOCK_SESSIONS[sessionId].status = 'closed';
-      }
-      return true;
-    }
-
     try {
       const { error } = await supabase
         .from('attendance_sessions')
         .update({ status: 'closed' })
         .eq('id', sessionId);
 
-      return !error;
-    } catch (e) {
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error('Supabase closeAttendanceSession error:', err);
       return false;
     }
   },

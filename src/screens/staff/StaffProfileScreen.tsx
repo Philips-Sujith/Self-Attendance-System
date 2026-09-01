@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { Header } from '../../components/common/Header';
 import { Card } from '../../components/common/Card';
@@ -12,7 +13,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StaffStackParamList } from '../../types/navigation';
 
 export const StaffProfileScreen: React.FC = () => {
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<StaffStackParamList>>();
 
   return (
@@ -49,19 +50,13 @@ export const StaffProfileScreen: React.FC = () => {
           </View>
         </Card>
 
-        {/* Role Switcher, Diagnostics & Sign Out */}
+        {/* Diagnostics & Sign Out */}
         <View style={styles.actions}>
           <Button
             title="Local WiFi Diagnostics Tool"
             variant="outline"
             iconName="wifi"
             onPress={() => navigation.navigate('NetworkTest')}
-          />
-          <Button
-            title="Switch to Student Flow (Preview)"
-            variant="secondary"
-            iconName="swap-horizontal"
-            onPress={() => switchRole('student')}
           />
           <Button
             title="Sign Out"

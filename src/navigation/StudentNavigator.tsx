@@ -10,17 +10,24 @@ import { NetworkTestScreen } from '../screens/shared/NetworkTestScreen';
 import { Colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
-import { RoleSwitcherBanner } from '../components/common/RoleSwitcherBanner';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Tab = createBottomTabNavigator<StudentTabParamList>();
 const Stack = createNativeStackNavigator<StudentStackParamList>();
 
 const StudentBottomTabs: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 8);
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: {
+          ...styles.tabBar,
+          height: 56 + bottomInset,
+          paddingBottom: bottomInset,
+        },
         tabBarActiveTintColor: Colors.secondary,
         tabBarInactiveTintColor: Colors.textMuted,
         tabBarLabelStyle: styles.tabLabel,
@@ -53,7 +60,6 @@ const StudentBottomTabs: React.FC = () => {
 export const StudentNavigator: React.FC = () => {
   return (
     <View style={styles.container}>
-      <RoleSwitcherBanner />
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
@@ -79,8 +85,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.surfaceBorder,
-    height: 60,
-    paddingBottom: 8,
     paddingTop: 6,
   },
   tabLabel: {

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { Header } from '../../components/common/Header';
 import { Card } from '../../components/common/Card';
@@ -12,7 +13,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StudentStackParamList } from '../../types/navigation';
 
 export const StudentProfileScreen: React.FC = () => {
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<StudentStackParamList>>();
 
   return (
@@ -62,12 +63,6 @@ export const StudentProfileScreen: React.FC = () => {
             variant="secondary"
             iconName="wifi"
             onPress={() => navigation.navigate('NetworkTest')}
-          />
-          <Button
-            title="Switch to Staff Flow (Preview)"
-            variant="outline"
-            iconName="swap-horizontal"
-            onPress={() => switchRole('staff')}
           />
           <Button
             title="Sign Out"

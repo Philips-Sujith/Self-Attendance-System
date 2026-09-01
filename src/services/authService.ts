@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
 import { UserProfile, UserRole } from '../types';
-import { ENV } from '../config/env';
 
 export interface SignUpStaffParams {
   email: string;
@@ -22,35 +21,19 @@ export interface SignUpStudentParams {
 }
 
 export const authService = {
-  // Sign Up Staff Member
+  // Sign Up Staff Member (Real Supabase Auth + Profile)
   signUpStaff: async (params: SignUpStaffParams): Promise<{ profile: UserProfile | null; error: Error | null }> => {
-    if (!ENV.isSupabaseConfigured()) {
-      return {
-        profile: {
-          id: 'staff-demo-' + Date.now(),
-          role: 'staff',
-          name: params.name || 'Faculty Member',
-          email: params.email,
-          mobile: params.mobile,
-          department: params.department || 'Computer Science & Engineering',
-          staffId: params.staffId || 'CSE-FAC-001',
-          createdAt: new Date().toISOString(),
-        },
-        error: null,
-      };
-    }
-
     try {
       const { data, error } = await supabase.auth.signUp({
-        email: params.email,
+        email: params.email.trim().toLowerCase(),
         password: params.password,
         options: {
           data: {
             role: 'staff',
-            name: params.name,
-            staff_id: params.staffId,
-            department: params.department,
-            mobile: params.mobile,
+            name: params.name.trim(),
+            staff_id: params.staffId.trim(),
+            department: params.department.trim(),
+            mobile: params.mobile.trim(),
           },
         },
       });
@@ -58,45 +41,36 @@ export const authService = {
       if (error) throw error;
       if (!data.user) throw new Error('Sign up failed: no user returned.');
 
-      // Wait a moment for trigger or fetch profile
-      const profile = await authService.getUserProfile(data.user.id);
+      // Fetch created profile from public.users or ensure it exists
+      const profile = await authService.getUserProfile(data.user.id, {
+        role: 'staff',
+        name: params.name.trim(),
+        email: params.email.trim().toLowerCase(),
+        mobile: params.mobile.trim(),
+        department: params.department.trim(),
+        staffId: params.staffId.trim(),
+      });
+
       return { profile, error: null };
     } catch (err: any) {
       return { profile: null, error: err };
     }
   },
 
-  // Sign Up Student
+  // Sign Up Student (Real Supabase Auth + Profile)
   signUpStudent: async (params: SignUpStudentParams): Promise<{ profile: UserProfile | null; error: Error | null }> => {
-    if (!ENV.isSupabaseConfigured()) {
-      return {
-        profile: {
-          id: 'student-demo-' + Date.now(),
-          role: 'student',
-          name: params.name || 'Student Member',
-          email: params.email,
-          mobile: params.mobile,
-          department: params.department || 'Computer Science & Engineering',
-          rollNo: params.rollNo || '21CS001',
-          classSection: params.classSection || 'CSE Sec A',
-          createdAt: new Date().toISOString(),
-        },
-        error: null,
-      };
-    }
-
     try {
       const { data, error } = await supabase.auth.signUp({
-        email: params.email,
+        email: params.email.trim().toLowerCase(),
         password: params.password,
         options: {
           data: {
             role: 'student',
-            name: params.name,
-            roll_no: params.rollNo,
-            department: params.department,
-            class_section: params.classSection,
-            mobile: params.mobile,
+            name: params.name.trim(),
+            roll_no: params.rollNo.trim(),
+            department: params.department.trim(),
+            class_section: params.classSection.trim(),
+            mobile: params.mobile.trim(),
           },
         },
       });
@@ -104,111 +78,123 @@ export const authService = {
       if (error) throw error;
       if (!data.user) throw new Error('Sign up failed: no user returned.');
 
-      const profile = await authService.getUserProfile(data.user.id);
+      // Fetch created profile from public.users or ensure it exists
+      const profile = await authService.getUserProfile(data.user.id, {
+        role: 'student',
+        name: params.name.trim(),
+        email: params.email.trim().toLowerCase(),
+        mobile: params.mobile.trim(),
+        department: params.department.trim(),
+        rollNo: params.rollNo.trim(),
+        classSection: params.classSection.trim(),
+      });
+
       return { profile, error: null };
     } catch (err: any) {
       return { profile: null, error: err };
     }
   },
 
-  // Sign In with Email & Password
+  // Sign In with Email & Password (Real Supabase Auth)
   signIn: async (email: string, password: string): Promise<{ profile: UserProfile | null; error: Error | null }> => {
-    if (!ENV.isSupabaseConfigured()) {
-      // Mock sign in fallback based on email hint or default
-      const isStaff = email.toLowerCase().includes('staff') || email.toLowerCase().includes('faculty') || email.toLowerCase().includes('sujith');
-      const profile: UserProfile = isStaff
-        ? {
-            id: 'staff-001',
-            role: 'staff',
-            name: 'Dr. Sujith Philips',
-            email: email || 'sujith.philips@college.edu',
-            mobile: '+91 98765 43210',
-            department: 'Computer Science & Engineering',
-            staffId: 'CSE-FAC-104',
-            createdAt: new Date().toISOString(),
-          }
-        : {
-            id: 'student-001',
-            role: 'student',
-            name: 'Alex Johnson',
-            email: email || 'alex.j@student.college.edu',
-            mobile: '+91 91234 56789',
-            department: 'Computer Science & Engineering',
-            rollNo: '21CS1085',
-            classSection: 'CSE - Section B (Semester 6)',
-            createdAt: new Date().toISOString(),
-          };
-
-      return { profile, error: null };
-    }
-
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       });
 
       if (error) throw error;
-      if (!data.user) throw new Error('No user returned from login.');
+      if (!data.user) throw new Error('Login failed: no user returned from credentials.');
 
       const profile = await authService.getUserProfile(data.user.id);
+      if (!profile) {
+        throw new Error('User profile could not be loaded. Please contact administration.');
+      }
+
       return { profile, error: null };
     } catch (err: any) {
       return { profile: null, error: err };
     }
   },
 
-  // Get User Profile from public.users table
-  getUserProfile: async (userId: string): Promise<UserProfile | null> => {
+  // Get User Profile from public.users table (Single Source of Truth)
+  getUserProfile: async (
+    userId: string,
+    fallbackMetadata?: Partial<UserProfile>
+  ): Promise<UserProfile | null> => {
     try {
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) {
-        // Fallback to auth metadata if profile query fails
-        const { data: authData } = await supabase.auth.getUser();
-        if (authData?.user) {
-          const meta = authData.user.user_metadata || {};
-          return {
-            id: authData.user.id,
-            role: (meta.role as UserRole) || 'student',
-            name: meta.name || authData.user.email?.split('@')[0] || 'User',
-            email: authData.user.email || '',
-            mobile: meta.mobile || '',
-            department: meta.department || 'Computer Science & Engineering',
-            rollNo: meta.roll_no || null,
-            staffId: meta.staff_id || null,
-            classSection: meta.class_section || null,
-            createdAt: authData.user.created_at || new Date().toISOString(),
-          };
-        }
-        return null;
+      if (data && !error) {
+        return {
+          id: data.id,
+          role: data.role as UserRole,
+          name: data.name,
+          email: data.email,
+          mobile: data.mobile || undefined,
+          rollNo: data.roll_no || undefined,
+          staffId: data.staff_id || undefined,
+          department: data.department || 'Computer Science & Engineering',
+          classSection: data.class_section || undefined,
+          createdAt: data.created_at,
+        };
       }
 
-      return {
-        id: data.id,
-        role: data.role as UserRole,
-        name: data.name,
-        email: data.email,
-        mobile: data.mobile,
-        department: data.department,
-        rollNo: data.roll_no,
-        staffId: data.staff_id,
-        classSection: data.class_section,
-        createdAt: data.created_at,
-      };
-    } catch (e) {
+      // If public.users trigger hasn't completed yet, read user from auth and ensure profile exists
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user && authData.user.id === userId) {
+        const meta = authData.user.user_metadata || {};
+        const resolvedRole: UserRole = (meta.role as UserRole) || (fallbackMetadata?.role as UserRole) || 'student';
+        const resolvedName: string = meta.name || fallbackMetadata?.name || authData.user.email?.split('@')[0] || 'User';
+        const resolvedEmail: string = authData.user.email || fallbackMetadata?.email || '';
+
+        // Upsert the missing profile into public.users
+        const newProfile: UserProfile = {
+          id: userId,
+          role: resolvedRole,
+          name: resolvedName,
+          email: resolvedEmail,
+          mobile: meta.mobile || fallbackMetadata?.mobile || undefined,
+          rollNo: meta.roll_no || fallbackMetadata?.rollNo || undefined,
+          staffId: meta.staff_id || fallbackMetadata?.staffId || undefined,
+          department: meta.department || fallbackMetadata?.department || 'Computer Science & Engineering',
+          classSection: meta.class_section || fallbackMetadata?.classSection || undefined,
+          createdAt: new Date().toISOString(),
+        };
+
+        await supabase.from('users').upsert({
+          id: newProfile.id,
+          role: newProfile.role,
+          name: newProfile.name,
+          email: newProfile.email,
+          mobile: newProfile.mobile || null,
+          roll_no: newProfile.rollNo || null,
+          staff_id: newProfile.staffId || null,
+          department: newProfile.department,
+          class_section: newProfile.classSection || null,
+        });
+
+        return newProfile;
+      }
+
+      return null;
+    } catch (err) {
+      console.error('Error fetching user profile from Supabase:', err);
       return null;
     }
   },
 
-  // Sign Out
-  signOut: async (): Promise<void> => {
-    if (ENV.isSupabaseConfigured()) {
-      await supabase.auth.signOut();
+  // Sign Out cleanly
+  signOut: async (): Promise<{ error: Error | null }> => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      return { error };
+    } catch (err: any) {
+      return { error: err };
     }
   },
 };

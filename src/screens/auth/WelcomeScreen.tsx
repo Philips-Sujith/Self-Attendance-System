@@ -3,16 +3,14 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
-import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../types/navigation';
-import { useAuth } from '../../context/AuthContext';
 
 type WelcomeScreenNavProp = NativeStackNavigationProp<AuthStackParamList, 'Welcome'>;
 
@@ -21,15 +19,13 @@ interface WelcomeScreenProps {
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
-  const { loginAsStaff, loginAsStudent } = useAuth();
-
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.container}>
         {/* Brand Header */}
         <View style={styles.brandContainer}>
           <View style={styles.logoBadge}>
-            <Ionicons name="finger-print" size={42} color={Colors.primaryLight} />
+            <Ionicons name="finger-print" size={44} color={Colors.primaryLight} />
           </View>
           <Text style={styles.brandTitle}>SAS</Text>
           <Text style={styles.brandSubtitle}>Self Attendance System</Text>
@@ -38,7 +34,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Value Proposition Cards */}
+        {/* Role Portals Selection */}
         <View style={styles.cardsContainer}>
           <Card
             variant="elevated"
@@ -47,12 +43,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           >
             <View style={styles.cardHeader}>
               <View style={[styles.iconWrapper, styles.staffIconBg]}>
-                <Ionicons name="school" size={24} color={Colors.primaryLight} />
+                <Ionicons name="school" size={26} color={Colors.primaryLight} />
               </View>
               <View style={styles.cardTextContainer}>
-                <Text style={styles.cardTitle}>Staff Portal</Text>
+                <Text style={styles.cardTitle}>Faculty / Staff Portal</Text>
                 <Text style={styles.cardDesc}>
-                  Create course groups, broadcast attendance sessions & track live roll-calls.
+                  Manage course groups, start live attendance sessions, and export attendance spreadsheets.
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
@@ -66,12 +62,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           >
             <View style={styles.cardHeader}>
               <View style={[styles.iconWrapper, styles.studentIconBg]}>
-                <Ionicons name="person" size={24} color={Colors.secondary} />
+                <Ionicons name="person" size={26} color={Colors.secondary} />
               </View>
               <View style={styles.cardTextContainer}>
                 <Text style={styles.cardTitle}>Student Portal</Text>
                 <Text style={styles.cardDesc}>
-                  Join course groups with join-codes & mark proximity-verified attendance.
+                  Join course groups via join codes and mark proximity-verified class attendance.
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
@@ -79,30 +75,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           </Card>
         </View>
 
-        {/* Quick Demo Shortcuts */}
-        <View style={styles.demoSection}>
-          <Text style={styles.demoLabel}>⚡ Quick Preview Sign In</Text>
-          <View style={styles.demoButtonsRow}>
-            <Button
-              title="Instant Staff Sign-In"
-              variant="outline"
-              size="sm"
-              iconName="school-outline"
-              style={styles.demoBtn}
-              onPress={() => loginAsStaff()}
-            />
-            <Button
-              title="Instant Student Sign-In"
-              variant="secondary"
-              size="sm"
-              iconName="person-outline"
-              style={styles.demoBtn}
-              onPress={() => loginAsStudent()}
-            />
-          </View>
-        </View>
-
-        {/* Bottom Footer Note */}
+        {/* Bottom Security Footer */}
         <View style={styles.footer}>
           <Ionicons name="shield-checkmark" size={16} color={Colors.success} />
           <Text style={styles.footerText}>
@@ -122,12 +95,12 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.xl,
+    paddingVertical: Spacing.md,
     justifyContent: 'space-between',
   },
   brandContainer: {
     alignItems: 'center',
-    marginVertical: Spacing.lg,
+    marginVertical: Spacing.md,
   },
   logoBadge: {
     width: 80,
@@ -142,12 +115,12 @@ const styles = StyleSheet.create({
   },
   brandTitle: {
     ...Typography.h1,
-    fontSize: 36,
+    fontSize: 32,
     letterSpacing: 1.5,
     color: Colors.text,
   },
   brandSubtitle: {
-    ...Typography.bodyBold,
+    ...Typography.body,
     fontSize: 16,
     color: Colors.textSecondary,
     marginTop: 2,
@@ -155,15 +128,17 @@ const styles = StyleSheet.create({
   pillTag: {
     backgroundColor: Colors.surfaceElevated,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
+    paddingVertical: 5,
     borderRadius: BorderRadius.full,
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
   },
   pillText: {
-    ...Typography.badge,
-    color: Colors.primaryLight,
+    ...Typography.captionBold,
+    color: Colors.secondary,
+    fontSize: 11,
+    letterSpacing: 0.5,
   },
   cardsContainer: {
     gap: Spacing.md,
@@ -186,55 +161,40 @@ const styles = StyleSheet.create({
   },
   staffIconBg: {
     backgroundColor: Colors.primaryGlow,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight + '44',
   },
   studentIconBg: {
     backgroundColor: 'rgba(6, 182, 212, 0.15)',
+    borderWidth: 1,
+    borderColor: Colors.secondary + '44',
   },
   cardTextContainer: {
     flex: 1,
-    marginRight: Spacing.sm,
+    marginRight: Spacing.xs,
   },
   cardTitle: {
     ...Typography.h3,
-    marginBottom: 4,
+    fontSize: 16,
+    color: Colors.text,
   },
   cardDesc: {
     ...Typography.caption,
-    lineHeight: 18,
-  },
-  demoSection: {
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    marginVertical: Spacing.md,
-  },
-  demoLabel: {
-    ...Typography.captionBold,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
-  },
-  demoButtonsRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  demoBtn: {
-    flex: 1,
+    color: Colors.textMuted,
+    marginTop: 3,
+    lineHeight: 16,
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: Spacing.md,
     gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
   },
   footerText: {
     ...Typography.caption,
-    fontSize: 11,
     color: Colors.textMuted,
+    fontSize: 11,
     textAlign: 'center',
-    flex: 1,
   },
 });
