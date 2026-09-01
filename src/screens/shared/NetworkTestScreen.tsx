@@ -81,7 +81,7 @@ export const NetworkTestScreen: React.FC = () => {
     <SafeAreaView style={styles.safeArea}>
       <Header
         title="Local Network Diagnostic"
-        subtitle="mDNS / Bonjour Proximity Tester (§9)"
+        subtitle="mDNS / Bonjour Proximity Tester"
         showBack
       />
       <ScrollView contentContainerStyle={styles.container}>
@@ -266,11 +266,11 @@ export const NetworkTestScreen: React.FC = () => {
           </View>
         )}
 
-        {/* AP CLIENT ISOLATION DIAGNOSTIC NOTE (§9) */}
+        {/* ENTERPRISE WIFI DIAGNOSTIC NOTE */}
         <Card style={styles.diagnosticCard}>
           <View style={styles.diagHeader}>
             <Ionicons name="warning-outline" size={22} color={Colors.warning} />
-            <Text style={styles.diagTitle}>Known Enterprise WiFi Risk (§9)</Text>
+            <Text style={styles.diagTitle}>Enterprise WiFi Information</Text>
           </View>
           <Text style={styles.diagText}>
             Some college & enterprise WiFi networks enable <Text style={styles.boldText}>AP / Client Isolation</Text>, which prevents two devices on the same WiFi from discovering each other via mDNS even though both are connected.

@@ -153,7 +153,7 @@ export const StaffReportsScreen: React.FC<StaffReportsScreenProps> = ({ route })
     <SafeAreaView style={styles.safeArea}>
       <Header
         title={`${session.groupCode || 'Course'} Reports`}
-        subtitle="Attendance Analytics & CSV Export (§9)"
+        subtitle="Attendance Analytics & CSV Export"
         showBack
       />
       <ScrollView contentContainerStyle={styles.container}>

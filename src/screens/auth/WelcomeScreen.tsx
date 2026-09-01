@@ -79,12 +79,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           </Card>
         </View>
 
-        {/* Quick Demo Shortcuts (Stage 1 Helper) */}
+        {/* Quick Demo Shortcuts */}
         <View style={styles.demoSection}>
-          <Text style={styles.demoLabel}>⚡ Quick Instant Demo (Stage 1)</Text>
+          <Text style={styles.demoLabel}>⚡ Quick Preview Sign In</Text>
           <View style={styles.demoButtonsRow}>
             <Button
-              title="Instant Staff View"
+              title="Instant Staff Sign-In"
               variant="outline"
               size="sm"
               iconName="school-outline"
@@ -92,7 +92,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
               onPress={() => loginAsStaff()}
             />
             <Button
-              title="Instant Student View"
+              title="Instant Student Sign-In"
               variant="secondary"
               size="sm"
               iconName="person-outline"
@@ -106,7 +106,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
         <View style={styles.footer}>
           <Ionicons name="shield-checkmark" size={16} color={Colors.success} />
           <Text style={styles.footerText}>
-            Protected by device fingerprinting & local network mDNS proximity checks
+            Protected by device fingerprinting & WiFi proximity verification
           </Text>
         </View>
       </ScrollView>

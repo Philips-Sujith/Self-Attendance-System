@@ -58,7 +58,7 @@ export const StudentProfileScreen: React.FC = () => {
         {/* Actions */}
         <View style={styles.actions}>
           <Button
-            title="🧪 Local WiFi Proximity Test Tool (§9)"
+            title="Local WiFi Diagnostics Tool"
             variant="secondary"
             iconName="wifi"
             onPress={() => navigation.navigate('NetworkTest')}

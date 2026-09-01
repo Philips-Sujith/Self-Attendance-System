@@ -52,7 +52,7 @@ export const StaffProfileScreen: React.FC = () => {
         {/* Role Switcher, Diagnostics & Sign Out */}
         <View style={styles.actions}>
           <Button
-            title="🧪 Local WiFi Proximity Test Tool (§9)"
+            title="Local WiFi Diagnostics Tool"
             variant="outline"
             iconName="wifi"
             onPress={() => navigation.navigate('NetworkTest')}
