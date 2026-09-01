@@ -7,6 +7,7 @@ import { StaffGroupDetailScreen } from '../screens/staff/StaffGroupDetailScreen'
 import { StaffSessionScreen } from '../screens/staff/StaffSessionScreen';
 import { StaffRosterScreen } from '../screens/staff/StaffRosterScreen';
 import { StaffProfileScreen } from '../screens/staff/StaffProfileScreen';
+import { NetworkTestScreen } from '../screens/shared/NetworkTestScreen';
 import { Colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
@@ -65,6 +66,7 @@ export const StaffNavigator: React.FC = () => {
         <Stack.Screen name="StaffGroupDetail" component={StaffGroupDetailScreen} />
         <Stack.Screen name="StaffSessionLive" component={StaffSessionScreen} />
         <Stack.Screen name="StaffRoster" component={StaffRosterScreen} />
+        <Stack.Screen name="NetworkTest" component={NetworkTestScreen} />
       </Stack.Navigator>
     </View>
   );

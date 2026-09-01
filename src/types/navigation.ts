@@ -23,6 +23,7 @@ export type StaffStackParamList = {
   StaffStartSession: { group: CourseGroup };
   StaffSessionLive: { session: AttendanceSession };
   StaffSessionReport: { session: AttendanceSession };
+  NetworkTest: undefined;
 };
 
 // Student Navigation Params
@@ -37,6 +38,7 @@ export type StudentStackParamList = {
   StudentJoinGroup: undefined;
   StudentCourseDetail: { group: CourseGroup };
   StudentMarkAttendance: { session: AttendanceSession };
+  NetworkTest: undefined;
 };
 
 // Root Stack Params

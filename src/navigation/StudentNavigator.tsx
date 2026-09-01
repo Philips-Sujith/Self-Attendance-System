@@ -6,6 +6,7 @@ import { StudentDashboardScreen } from '../screens/student/StudentDashboardScree
 import { StudentJoinGroupScreen } from '../screens/student/StudentJoinGroupScreen';
 import { StudentSessionScreen } from '../screens/student/StudentSessionScreen';
 import { StudentProfileScreen } from '../screens/student/StudentProfileScreen';
+import { NetworkTestScreen } from '../screens/shared/NetworkTestScreen';
 import { Colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
@@ -63,6 +64,7 @@ export const StudentNavigator: React.FC = () => {
         <Stack.Screen name="StudentTabs" component={StudentBottomTabs} />
         <Stack.Screen name="StudentJoinGroup" component={StudentJoinGroupScreen} />
         <Stack.Screen name="StudentMarkAttendance" component={StudentSessionScreen} />
+        <Stack.Screen name="NetworkTest" component={NetworkTestScreen} />
       </Stack.Navigator>
     </View>
   );

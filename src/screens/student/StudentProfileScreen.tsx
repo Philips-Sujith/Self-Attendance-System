@@ -7,9 +7,13 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { useAuth } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { StudentStackParamList } from '../../types/navigation';
 
 export const StudentProfileScreen: React.FC = () => {
   const { user, logout, switchRole } = useAuth();
+  const navigation = useNavigation<NativeStackNavigationProp<StudentStackParamList>>();
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -53,6 +57,12 @@ export const StudentProfileScreen: React.FC = () => {
 
         {/* Actions */}
         <View style={styles.actions}>
+          <Button
+            title="🧪 Local WiFi Proximity Test Tool (§9)"
+            variant="secondary"
+            iconName="wifi"
+            onPress={() => navigation.navigate('NetworkTest')}
+          />
           <Button
             title="Switch to Staff Flow (Preview)"
             variant="outline"
