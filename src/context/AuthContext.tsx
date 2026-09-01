@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole } from '../types';
+import { authService, SignUpStaffParams, SignUpStudentParams } from '../services/authService';
+import { supabase } from '../services/supabase';
+import { ENV } from '../config/env';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -8,6 +11,9 @@ interface AuthContextType {
   role: UserRole | null;
   loginAsStaff: (email?: string) => Promise<void>;
   loginAsStudent: (email?: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signUpStaff: (params: SignUpStaffParams) => Promise<{ success: boolean; error?: string }>;
+  signUpStudent: (params: SignUpStudentParams) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   switchRole: (role: UserRole) => void;
   setUser: (user: UserProfile | null) => void;
@@ -40,12 +46,97 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Default to null (Welcome screen) or staff for testing
+  // Restore Supabase Session on Mount
   useEffect(() => {
-    // Start on welcome screen by default, or auto-login for testing if desired
+    const initializeAuth = async () => {
+      try {
+        if (ENV.isSupabaseConfigured()) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            const profile = await authService.getUserProfile(session.user.id);
+            if (profile) {
+              setUser(profile);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Auth session initialization failed:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    // Listen to Supabase Auth state changes if configured
+    if (ENV.isSupabaseConfigured()) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (session?.user) {
+          const profile = await authService.getUserProfile(session.user.id);
+          setUser(profile);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
   }, []);
+
+  const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    try {
+      const { profile, error } = await authService.signIn(email, password);
+      if (error || !profile) {
+        setIsLoading(false);
+        return { success: false, error: error?.message || 'Login failed. Please check your credentials.' };
+      }
+      setUser(profile);
+      setIsLoading(false);
+      return { success: true };
+    } catch (err: any) {
+      setIsLoading(false);
+      return { success: false, error: err.message || 'An unexpected error occurred.' };
+    }
+  };
+
+  const signUpStaff = async (params: SignUpStaffParams): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    try {
+      const { profile, error } = await authService.signUpStaff(params);
+      if (error || !profile) {
+        setIsLoading(false);
+        return { success: false, error: error?.message || 'Staff registration failed.' };
+      }
+      setUser(profile);
+      setIsLoading(false);
+      return { success: true };
+    } catch (err: any) {
+      setIsLoading(false);
+      return { success: false, error: err.message || 'An unexpected error occurred.' };
+    }
+  };
+
+  const signUpStudent = async (params: SignUpStudentParams): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    try {
+      const { profile, error } = await authService.signUpStudent(params);
+      if (error || !profile) {
+        setIsLoading(false);
+        return { success: false, error: error?.message || 'Student registration failed.' };
+      }
+      setUser(profile);
+      setIsLoading(false);
+      return { success: true };
+    } catch (err: any) {
+      setIsLoading(false);
+      return { success: false, error: err.message || 'An unexpected error occurred.' };
+    }
+  };
 
   const loginAsStaff = async (email?: string) => {
     setIsLoading(true);
@@ -55,7 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: email || MOCK_STAFF_USER.email,
       });
       setIsLoading(false);
-    }, 400);
+    }, 300);
   };
 
   const loginAsStudent = async (email?: string) => {
@@ -66,15 +157,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: email || MOCK_STUDENT_USER.email,
       });
       setIsLoading(false);
-    }, 400);
+    }, 300);
   };
 
   const logout = async () => {
     setIsLoading(true);
-    setTimeout(() => {
-      setUser(null);
-      setIsLoading(false);
-    }, 200);
+    await authService.signOut();
+    setUser(null);
+    setIsLoading(false);
   };
 
   const switchRole = (newRole: UserRole) => {
@@ -94,6 +184,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: user?.role ?? null,
         loginAsStaff,
         loginAsStudent,
+        signIn,
+        signUpStaff,
+        signUpStudent,
         logout,
         switchRole,
         setUser,

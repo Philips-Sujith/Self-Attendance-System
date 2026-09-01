@@ -16,26 +16,66 @@ import { Button } from '../../components/common/Button';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../types/navigation';
 import { useAuth } from '../../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
 
 type StudentAuthScreenProps = NativeStackScreenProps<AuthStackParamList, 'StudentAuth'>;
 
 export const StudentAuthScreen: React.FC<StudentAuthScreenProps> = ({ route, navigation }) => {
   const initialMode = route.params?.mode || 'login';
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
-  const { loginAsStudent, isLoading } = useAuth();
+  const { signIn, signUpStudent, isLoading } = useAuth();
 
   // Form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [rollNo, setRollNo] = useState('');
-  const [department, setDepartment] = useState('');
-  const [classSection, setClassSection] = useState('');
+  const [department, setDepartment] = useState('Computer Science & Engineering');
+  const [classSection, setClassSection] = useState('CSE - Section B');
   const [mobile, setMobile] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
-    // In Stage 1: mock login/signup
-    await loginAsStudent(email || 'alex.j@student.college.edu');
+    setErrorMessage(null);
+
+    if (!email.trim()) {
+      setErrorMessage('Please enter your email address.');
+      return;
+    }
+    if (!password.trim() || password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (isLogin) {
+      const result = await signIn(email.trim(), password);
+      if (!result.success) {
+        setErrorMessage(result.error || 'Login failed. Check your credentials.');
+      }
+    } else {
+      if (!name.trim()) {
+        setErrorMessage('Please enter your full name.');
+        return;
+      }
+      if (!rollNo.trim()) {
+        setErrorMessage('Please enter your Roll Number.');
+        return;
+      }
+
+      const result = await signUpStudent({
+        email: email.trim(),
+        password,
+        name: name.trim(),
+        rollNo: rollNo.trim(),
+        department: department.trim(),
+        classSection: classSection.trim(),
+        mobile: mobile.trim(),
+      });
+
+      if (!result.success) {
+        setErrorMessage(result.error || 'Registration failed.');
+      }
+    }
   };
 
   return (
@@ -54,19 +94,33 @@ export const StudentAuthScreen: React.FC<StudentAuthScreenProps> = ({ route, nav
           <View style={styles.tabContainer}>
             <TouchableOpacity
               style={[styles.tab, isLogin && styles.activeTab]}
-              onPress={() => setIsLogin(true)}
+              onPress={() => {
+                setIsLogin(true);
+                setErrorMessage(null);
+              }}
               activeOpacity={0.7}
             >
               <Text style={[styles.tabText, isLogin && styles.activeTabText]}>Sign In</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.tab, !isLogin && styles.activeTab]}
-              onPress={() => setIsLogin(false)}
+              onPress={() => {
+                setIsLogin(false);
+                setErrorMessage(null);
+              }}
               activeOpacity={0.7}
             >
               <Text style={[styles.tabText, !isLogin && styles.activeTabText]}>Register</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Error Banner */}
+          {errorMessage && (
+            <View style={styles.errorBanner}>
+              <Ionicons name="alert-circle" size={18} color={Colors.danger} />
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+            </View>
+          )}
 
           {/* Form Fields */}
           {!isLogin && (
@@ -170,7 +224,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     padding: Spacing.xs,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
   },
@@ -189,6 +243,22 @@ const styles = StyleSheet.create({
   },
   activeTabText: {
     color: Colors.textInverse,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dangerLight,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.danger + '44',
+  },
+  errorBannerText: {
+    ...Typography.captionBold,
+    color: Colors.danger,
+    flex: 1,
   },
   submitBtn: {
     marginTop: Spacing.md,

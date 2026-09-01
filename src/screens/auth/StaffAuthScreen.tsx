@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { Header } from '../../components/common/Header';
@@ -23,19 +24,57 @@ type StaffAuthScreenProps = NativeStackScreenProps<AuthStackParamList, 'StaffAut
 export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigation }) => {
   const initialMode = route.params?.mode || 'login';
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
-  const { loginAsStaff, isLoading } = useAuth();
+  const { signIn, signUpStaff, isLoading } = useAuth();
 
   // Form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [staffId, setStaffId] = useState('');
-  const [department, setDepartment] = useState('');
+  const [department, setDepartment] = useState('Computer Science & Engineering');
   const [mobile, setMobile] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
-    // In Stage 1: mock login/signup
-    await loginAsStaff(email || 'sujith.philips@college.edu');
+    setErrorMessage(null);
+
+    if (!email.trim()) {
+      setErrorMessage('Please enter your email address.');
+      return;
+    }
+    if (!password.trim() || password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (isLogin) {
+      const result = await signIn(email.trim(), password);
+      if (!result.success) {
+        setErrorMessage(result.error || 'Login failed. Check your credentials.');
+      }
+    } else {
+      if (!name.trim()) {
+        setErrorMessage('Please enter your full name.');
+        return;
+      }
+      if (!staffId.trim()) {
+        setErrorMessage('Please enter your Staff / Faculty ID.');
+        return;
+      }
+
+      const result = await signUpStaff({
+        email: email.trim(),
+        password,
+        name: name.trim(),
+        staffId: staffId.trim(),
+        department: department.trim(),
+        mobile: mobile.trim(),
+      });
+
+      if (!result.success) {
+        setErrorMessage(result.error || 'Registration failed.');
+      }
+    }
   };
 
   return (
@@ -54,19 +93,33 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
           <View style={styles.tabContainer}>
             <TouchableOpacity
               style={[styles.tab, isLogin && styles.activeTab]}
-              onPress={() => setIsLogin(true)}
+              onPress={() => {
+                setIsLogin(true);
+                setErrorMessage(null);
+              }}
               activeOpacity={0.7}
             >
               <Text style={[styles.tabText, isLogin && styles.activeTabText]}>Sign In</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.tab, !isLogin && styles.activeTab]}
-              onPress={() => setIsLogin(false)}
+              onPress={() => {
+                setIsLogin(false);
+                setErrorMessage(null);
+              }}
               activeOpacity={0.7}
             >
               <Text style={[styles.tabText, !isLogin && styles.activeTabText]}>Register</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Error Banner */}
+          {errorMessage && (
+            <View style={styles.errorBanner}>
+              <Ionicons name="alert-circle" size={18} color={Colors.danger} />
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+            </View>
+          )}
 
           {/* Form Fields */}
           {!isLogin && (
@@ -82,6 +135,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
                 label="Staff / Faculty ID"
                 placeholder="CSE-FAC-104"
                 leftIcon="id-card-outline"
+                autoCapitalize="characters"
                 value={staffId}
                 onChangeText={setStaffId}
               />
@@ -162,7 +216,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     padding: Spacing.xs,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
   },
@@ -181,6 +235,22 @@ const styles = StyleSheet.create({
   },
   activeTabText: {
     color: Colors.white,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dangerLight,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.danger + '44',
+  },
+  errorBannerText: {
+    ...Typography.captionBold,
+    color: Colors.danger,
+    flex: 1,
   },
   submitBtn: {
     marginTop: Spacing.md,
