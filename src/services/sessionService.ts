@@ -362,6 +362,11 @@ export const sessionService = {
     reason: string;
   }): Promise<{ success: boolean; error?: string }> => {
     const timestamp = new Date().toISOString();
+    const cleanReason = (params.reason || '').trim();
+
+    if (params.status !== 'absent' && cleanReason.length < 3) {
+      return { success: false, error: 'Every manual status override requires an audit reason of at least 3 characters.' };
+    }
 
     try {
       if (params.status === 'absent') {
@@ -375,6 +380,9 @@ export const sessionService = {
         return { success: true };
       }
 
+      // Use a student-scoped device ID for overrides to prevent multi-student collisions on unique_session_device
+      const overrideDeviceId = `STAFF_OVERRIDE_${params.studentId}`;
+
       const { error } = await supabase
         .from('attendance_records')
         .upsert(
@@ -383,9 +391,9 @@ export const sessionService = {
             student_id: params.studentId,
             marked_at: timestamp,
             verification_method: 'manual_override',
-            device_id: 'STAFF_MANUAL_OVERRIDE',
+            device_id: overrideDeviceId,
             status: params.status,
-            override_reason: params.reason,
+            override_reason: cleanReason,
           },
           { onConflict: 'session_id, student_id' }
         );
@@ -393,8 +401,30 @@ export const sessionService = {
       if (error) throw error;
       return { success: true };
     } catch (err: any) {
-      console.error('Supabase manualRecordOverride error:', err);
-      return { success: false, error: err.message || 'Failed to save status override.' };
+      const code = err?.code || 'UNKNOWN';
+      const rawMessage = err?.message || 'Failed to save status override.';
+      console.error('Supabase manualRecordOverride error diagnostics:', {
+        code,
+        message: rawMessage,
+        details: err?.details || null,
+        hint: err?.hint || null,
+        table: 'attendance_records',
+        operation: params.status === 'absent' ? 'DELETE' : 'UPSERT',
+        targetSessionId: params.sessionId,
+        targetStudentId: params.studentId,
+        targetStatus: params.status,
+      });
+
+      let userFriendlyError = rawMessage;
+      if (code === '42501') {
+        userFriendlyError = 'Database security policy rejected the override. Verify that you are the faculty instructor of this session and the student is enrolled.';
+      } else if (code === '23505') {
+        userFriendlyError = 'Attendance record conflict for this student in this session.';
+      } else if (code === '23503') {
+        userFriendlyError = 'Invalid session or student reference in the database.';
+      }
+
+      return { success: false, error: userFriendlyError };
     }
   },
 

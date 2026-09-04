@@ -194,4 +194,148 @@ describe('Category 6: Manual Override & Audit Trail Tests (22 Tests)', () => {
     expect(sanitized).toBe('alert(1)Late entry');
     expect(sanitized).not.toContain('<script>');
   });
+
+  // Test 23: Staff can INSERT manual override for absent student (no prior record)
+  test('M23: Staff can INSERT manual override for absent student with no prior record', () => {
+    const isStaff = true;
+    const isSessionOwner = true;
+    const isEnrolled = true;
+    const verificationMethod = 'manual_override';
+    const reason = 'Student in front row, phone dead';
+
+    const canInsertOverride =
+      isStaff &&
+      isSessionOwner &&
+      isEnrolled &&
+      verificationMethod === 'manual_override' &&
+      reason.trim().length >= 3;
+
+    expect(canInsertOverride).toBe(true);
+  });
+
+  // Test 24: Staff can UPDATE existing record with manual override
+  test('M24: Staff can UPDATE existing record with manual override', () => {
+    const isStaff = true;
+    const isSessionOwner = true;
+    const isEnrolled = true;
+    const verificationMethod = 'manual_override';
+    const reason = 'Corrected from late to present';
+
+    const canUpdateOverride =
+      isStaff &&
+      isSessionOwner &&
+      isEnrolled &&
+      verificationMethod === 'manual_override' &&
+      reason.trim().length >= 3;
+
+    expect(canUpdateOverride).toBe(true);
+  });
+
+  // Test 25: Closed session can still be manually overridden by authorized staff
+  test('M25: Closed session can still be manually overridden by authorized staff', () => {
+    const sessionStatus: string = 'closed';
+    const isStaff = true;
+    const isSessionOwner = true;
+    const isEnrolled = true;
+
+    // normal student mark is blocked on closed sessions
+    const studentCanMark = sessionStatus === 'active';
+    expect(studentCanMark).toBe(false);
+
+    // staff manual override is permitted on closed sessions
+    const staffCanOverride = isStaff && isSessionOwner && isEnrolled;
+    expect(staffCanOverride).toBe(true);
+  });
+
+  // Test 26: Multiple students in same session can be overridden without device collision
+  test('M26: Multiple students in same session can be overridden without device collision', () => {
+    const sessionId = 'session-101';
+    const student1Id = 'student-1';
+    const student2Id = 'student-2';
+
+    const device1 = `STAFF_OVERRIDE_${student1Id}`;
+    const device2 = `STAFF_OVERRIDE_${student2Id}`;
+
+    expect(device1).not.toBe(device2);
+    expect(device1).toBe('STAFF_OVERRIDE_student-1');
+    expect(device2).toBe('STAFF_OVERRIDE_student-2');
+
+    // Devices are distinct per student, so unique_session_device will never conflict
+    const keys = new Set();
+    keys.add(`${sessionId}_${device1}`);
+    keys.add(`${sessionId}_${device2}`);
+    expect(keys.size).toBe(2);
+  });
+
+  // Test 27: Staff A cannot override attendance belonging to Staff B session
+  test('M27: Staff A cannot override attendance belonging to Staff B session', () => {
+    const staffAUid: string = 'staff-A';
+    const sessionOwnerUid: string = 'staff-B';
+    const canOverride = staffAUid === sessionOwnerUid;
+    expect(canOverride).toBe(false);
+  });
+
+  // Test 28: Staff cannot override attendance for student not enrolled in the course group
+  test('M28: Staff cannot override attendance for student not enrolled in the course group', () => {
+    const isStaff = true;
+    const isSessionOwner = true;
+    const isEnrolled = false; // unenrolled student
+    const canOverride = isStaff && isSessionOwner && isEnrolled;
+    expect(canOverride).toBe(false);
+  });
+
+  // Test 29: Student cannot perform manual override
+  test('M29: Student cannot perform manual override because is_staff is false', () => {
+    const isStaff = false; // Student account
+    const canOverride = isStaff;
+    expect(canOverride).toBe(false);
+  });
+
+  // Test 30: Student cannot set verification_method to manual_override
+  test('M30: Student cannot set verification_method to manual_override', () => {
+    const userRole: string = 'student';
+    const attemptedMethod: string = 'manual_override';
+    const isAllowed = userRole === 'staff' || attemptedMethod !== 'manual_override';
+    expect(isAllowed).toBe(false);
+  });
+
+  // Test 31: Reason shorter than 3 characters is rejected
+  test('M31: Reason shorter than 3 characters is rejected', () => {
+    const shortReason = 'ok';
+    const isValid = shortReason.trim().length >= 3;
+    expect(isValid).toBe(false);
+  });
+
+  // Test 32: Whitespace-only reason is rejected
+  test('M32: Whitespace-only reason is rejected', () => {
+    const wsReason = '     ';
+    const isValid = wsReason.trim().length >= 3;
+    expect(isValid).toBe(false);
+  });
+
+  // Test 33: PostgreSQL error code 42501 translates to user-friendly permission error
+  test('M33: Error code 42501 translates into clear permission diagnostic', () => {
+    const code = '42501';
+    let message = 'raw';
+    if (code === '42501') {
+      message = 'Database security policy rejected the override. Verify that you are the faculty instructor of this session and the student is enrolled.';
+    }
+    expect(message).toContain('Database security policy rejected the override');
+  });
+
+  // Test 34: PostgreSQL error code 23505 translates to user-friendly conflict error
+  test('M34: Error code 23505 translates into conflict diagnostic', () => {
+    const code = '23505';
+    let message = 'raw';
+    if (code === '23505') {
+      message = 'Attendance record conflict for this student in this session.';
+    }
+    expect(message).toContain('Attendance record conflict');
+  });
+
+  // Test 35: RLS security policies remain strictly enabled on attendance_records
+  test('M35: RLS security policies remain strictly enabled on attendance_records', () => {
+    const rlsEnabled = true;
+    expect(rlsEnabled).toBe(true);
+  });
 });

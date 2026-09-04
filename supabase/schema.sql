@@ -90,10 +90,14 @@ CREATE TABLE IF NOT EXISTS public.attendance_records (
   override_reason TEXT,
   -- Anti-Proxy Safeguards:
   -- (1) One student cannot mark attendance twice in the same session
-  CONSTRAINT unique_session_student UNIQUE (session_id, student_id),
-  -- (2) One device cannot be used for multiple student marks in the same session
-  CONSTRAINT unique_session_device UNIQUE (session_id, device_id)
+  CONSTRAINT unique_session_student UNIQUE (session_id, student_id)
 );
+
+-- Anti-Proxy Safeguard (2): One device cannot be used for multiple student marks in the same session
+-- Partial index allows instructors to perform multiple manual overrides without device collisions
+CREATE UNIQUE INDEX IF NOT EXISTS unique_session_device
+  ON public.attendance_records(session_id, device_id)
+  WHERE verification_method != 'manual_override';
 
 -- Indexes for high-frequency queries and realtime subscriptions
 CREATE INDEX IF NOT EXISTS idx_course_groups_staff ON public.course_groups(staff_id);
@@ -289,12 +293,34 @@ AS $$
   );
 $$;
 
+-- Check if a staff member owns the session and student is enrolled (for manual override)
+CREATE OR REPLACE FUNCTION public.can_staff_override_attendance(
+  p_session_id uuid,
+  p_student_id uuid,
+  p_staff_id uuid DEFAULT auth.uid()
+)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.attendance_sessions s
+    JOIN public.group_memberships gm ON gm.group_id = s.group_id
+    WHERE s.id = p_session_id
+      AND s.staff_id = p_staff_id
+      AND gm.student_id = p_student_id
+  );
+$$;
+
 GRANT EXECUTE ON FUNCTION public.is_staff(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_group_staff(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_group_member(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_staff_of_student(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.can_mark_attendance(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_session_staff(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.can_staff_override_attendance(uuid, uuid, uuid) TO authenticated;
 
 -- ------------------------------------------------------------------------------
 -- USERS Table Policies
@@ -487,6 +513,18 @@ CREATE POLICY "Students can mark attendance for active sessions"
     AND public.can_mark_attendance(session_id, (SELECT auth.uid()))
   );
 
+-- Staff can insert attendance overrides (for absent students who have no prior record)
+CREATE POLICY "Staff can insert attendance overrides for their sessions"
+  ON public.attendance_records FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    public.is_staff((SELECT auth.uid()))
+    AND public.can_staff_override_attendance(session_id, student_id, (SELECT auth.uid()))
+    AND verification_method = 'manual_override'::public.verification_method
+    AND override_reason IS NOT NULL
+    AND length(trim(override_reason)) >= 3
+  );
+
 -- Students can read their own attendance records
 CREATE POLICY "Students can view their own attendance records"
   ON public.attendance_records FOR SELECT
@@ -508,18 +546,24 @@ CREATE POLICY "Staff can update attendance records for their sessions"
   ON public.attendance_records FOR UPDATE
   TO authenticated
   USING (
-    public.is_session_staff(session_id, (SELECT auth.uid()))
+    public.is_staff((SELECT auth.uid()))
+    AND public.can_staff_override_attendance(session_id, student_id, (SELECT auth.uid()))
   )
   WITH CHECK (
-    public.is_session_staff(session_id, (SELECT auth.uid()))
+    public.is_staff((SELECT auth.uid()))
+    AND public.can_staff_override_attendance(session_id, student_id, (SELECT auth.uid()))
+    AND verification_method = 'manual_override'::public.verification_method
+    AND override_reason IS NOT NULL
+    AND length(trim(override_reason)) >= 3
   );
 
--- Staff can delete attendance records (e.g. override back to absent)
+-- Staff can delete attendance records (e.g. overriding back to absent)
 CREATE POLICY "Staff can delete attendance records for their sessions"
   ON public.attendance_records FOR DELETE
   TO authenticated
   USING (
-    public.is_session_staff(session_id, (SELECT auth.uid()))
+    public.is_staff((SELECT auth.uid()))
+    AND public.can_staff_override_attendance(session_id, student_id, (SELECT auth.uid()))
   );
 
 -- ------------------------------------------------------------------------------
