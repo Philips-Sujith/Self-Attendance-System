@@ -119,8 +119,13 @@ DECLARE
   v_department TEXT;
   v_class_section TEXT;
 BEGIN
-  -- Extract metadata safely from raw_user_meta_data
-  v_role := COALESCE((new.raw_user_meta_data->>'role')::public.user_role, 'student'::public.user_role);
+  -- Extract metadata safely from raw_user_meta_data with robust role normalization
+  IF lower(COALESCE(new.raw_user_meta_data->>'role', 'student')) IN ('staff', 'admin', 'faculty') THEN
+    v_role := 'staff'::public.user_role;
+  ELSE
+    v_role := 'student'::public.user_role;
+  END IF;
+
   v_name := COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1));
   v_mobile := new.raw_user_meta_data->>'mobile';
   v_roll_no := new.raw_user_meta_data->>'roll_no';
@@ -151,6 +156,7 @@ BEGIN
     v_class_section
   )
   ON CONFLICT (id) DO UPDATE SET
+    role = EXCLUDED.role,
     name = EXCLUDED.name,
     mobile = EXCLUDED.mobile,
     roll_no = EXCLUDED.roll_no,
@@ -166,6 +172,20 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT OR UPDATE ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Auto-confirm user email upon registration (prevents SMTP rate limits & email confirmation blocks)
+CREATE OR REPLACE FUNCTION public.auto_confirm_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.email_confirmed_at := COALESCE(NEW.email_confirmed_at, now());
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS tr_auto_confirm_user ON auth.users;
+CREATE TRIGGER tr_auto_confirm_user
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.auto_confirm_user();
 
 -- ==============================================================================
 -- 8. Row Level Security (RLS) Policies
@@ -185,6 +205,12 @@ CREATE POLICY "Users can view their own profile"
   ON public.users FOR SELECT
   TO authenticated
   USING (auth.uid() = id);
+
+-- Users can insert their own profile
+CREATE POLICY "Users can insert their own profile"
+  ON public.users FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = id);
 
 -- Staff can view student profiles in their groups
 CREATE POLICY "Staff can view enrolled students profiles"

@@ -20,12 +20,19 @@ export interface SignUpStudentParams {
   mobile: string;
 }
 
+export interface SignUpResult {
+  profile: UserProfile | null;
+  requiresEmailConfirmation?: boolean;
+  error: Error | null;
+}
+
 export const authService = {
   // Sign Up Staff Member (Real Supabase Auth + Profile)
-  signUpStaff: async (params: SignUpStaffParams): Promise<{ profile: UserProfile | null; error: Error | null }> => {
+  signUpStaff: async (params: SignUpStaffParams): Promise<SignUpResult> => {
     try {
+      const email = params.email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signUp({
-        email: params.email.trim().toLowerCase(),
+        email,
         password: params.password,
         options: {
           data: {
@@ -41,27 +48,54 @@ export const authService = {
       if (error) throw error;
       if (!data.user) throw new Error('Sign up failed: no user returned.');
 
-      // Fetch created profile from public.users or ensure it exists
-      const profile = await authService.getUserProfile(data.user.id, {
-        role: 'staff',
-        name: params.name.trim(),
-        email: params.email.trim().toLowerCase(),
-        mobile: params.mobile.trim(),
-        department: params.department.trim(),
-        staffId: params.staffId.trim(),
+      // Check if session was returned directly
+      if (data.session) {
+        const profile = await authService.getUserProfile(data.user.id, {
+          role: 'staff',
+          name: params.name.trim(),
+          email,
+          mobile: params.mobile.trim(),
+          department: params.department.trim(),
+          staffId: params.staffId.trim(),
+        });
+        return { profile, error: null };
+      }
+
+      // If no session returned, attempt immediate sign-in (in case auto-confirm is active)
+      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: params.password,
       });
 
-      return { profile, error: null };
+      if (signInData?.user && !signInErr) {
+        const profile = await authService.getUserProfile(signInData.user.id, {
+          role: 'staff',
+          name: params.name.trim(),
+          email,
+          mobile: params.mobile.trim(),
+          department: params.department.trim(),
+          staffId: params.staffId.trim(),
+        });
+        return { profile, error: null };
+      }
+
+      // If email confirmation is required by Supabase
+      return {
+        profile: null,
+        requiresEmailConfirmation: true,
+        error: null,
+      };
     } catch (err: any) {
       return { profile: null, error: err };
     }
   },
 
   // Sign Up Student (Real Supabase Auth + Profile)
-  signUpStudent: async (params: SignUpStudentParams): Promise<{ profile: UserProfile | null; error: Error | null }> => {
+  signUpStudent: async (params: SignUpStudentParams): Promise<SignUpResult> => {
     try {
+      const email = params.email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signUp({
-        email: params.email.trim().toLowerCase(),
+        email,
         password: params.password,
         options: {
           data: {
@@ -78,18 +112,45 @@ export const authService = {
       if (error) throw error;
       if (!data.user) throw new Error('Sign up failed: no user returned.');
 
-      // Fetch created profile from public.users or ensure it exists
-      const profile = await authService.getUserProfile(data.user.id, {
-        role: 'student',
-        name: params.name.trim(),
-        email: params.email.trim().toLowerCase(),
-        mobile: params.mobile.trim(),
-        department: params.department.trim(),
-        rollNo: params.rollNo.trim(),
-        classSection: params.classSection.trim(),
+      // Check if session was returned directly
+      if (data.session) {
+        const profile = await authService.getUserProfile(data.user.id, {
+          role: 'student',
+          name: params.name.trim(),
+          email,
+          mobile: params.mobile.trim(),
+          department: params.department.trim(),
+          rollNo: params.rollNo.trim(),
+          classSection: params.classSection.trim(),
+        });
+        return { profile, error: null };
+      }
+
+      // If no session returned, attempt immediate sign-in
+      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: params.password,
       });
 
-      return { profile, error: null };
+      if (signInData?.user && !signInErr) {
+        const profile = await authService.getUserProfile(signInData.user.id, {
+          role: 'student',
+          name: params.name.trim(),
+          email,
+          mobile: params.mobile.trim(),
+          department: params.department.trim(),
+          rollNo: params.rollNo.trim(),
+          classSection: params.classSection.trim(),
+        });
+        return { profile, error: null };
+      }
+
+      // If email confirmation is required by Supabase
+      return {
+        profile: null,
+        requiresEmailConfirmation: true,
+        error: null,
+      };
     } catch (err: any) {
       return { profile: null, error: err };
     }
@@ -98,8 +159,9 @@ export const authService = {
   // Sign In with Email & Password (Real Supabase Auth)
   signIn: async (email: string, password: string): Promise<{ profile: UserProfile | null; error: Error | null }> => {
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         password,
       });
 
@@ -108,7 +170,7 @@ export const authService = {
 
       const profile = await authService.getUserProfile(data.user.id);
       if (!profile) {
-        throw new Error('User profile could not be loaded. Please contact administration.');
+        throw new Error('User profile could not be loaded from database.');
       }
 
       return { profile, error: null };
@@ -130,9 +192,12 @@ export const authService = {
         .maybeSingle();
 
       if (data && !error) {
+        const rawRole = (data.role || '').toLowerCase();
+        const canonicalRole: UserRole = rawRole === 'staff' || rawRole === 'admin' ? 'staff' : 'student';
+
         return {
           id: data.id,
-          role: data.role as UserRole,
+          role: canonicalRole,
           name: data.name,
           email: data.email,
           mobile: data.mobile || undefined,
@@ -148,11 +213,12 @@ export const authService = {
       const { data: authData } = await supabase.auth.getUser();
       if (authData?.user && authData.user.id === userId) {
         const meta = authData.user.user_metadata || {};
-        const resolvedRole: UserRole = (meta.role as UserRole) || (fallbackMetadata?.role as UserRole) || 'student';
+        const rawMetaRole = (meta.role || fallbackMetadata?.role || 'student').toLowerCase();
+        const resolvedRole: UserRole = rawMetaRole === 'staff' || rawMetaRole === 'admin' ? 'staff' : 'student';
         const resolvedName: string = meta.name || fallbackMetadata?.name || authData.user.email?.split('@')[0] || 'User';
         const resolvedEmail: string = authData.user.email || fallbackMetadata?.email || '';
 
-        // Upsert the missing profile into public.users
+        // Upsert the profile into public.users
         const newProfile: UserProfile = {
           id: userId,
           role: resolvedRole,
@@ -166,17 +232,21 @@ export const authService = {
           createdAt: new Date().toISOString(),
         };
 
-        await supabase.from('users').upsert({
-          id: newProfile.id,
-          role: newProfile.role,
-          name: newProfile.name,
-          email: newProfile.email,
-          mobile: newProfile.mobile || null,
-          roll_no: newProfile.rollNo || null,
-          staff_id: newProfile.staffId || null,
-          department: newProfile.department,
-          class_section: newProfile.classSection || null,
-        });
+        try {
+          await supabase.from('users').upsert({
+            id: newProfile.id,
+            role: newProfile.role,
+            name: newProfile.name,
+            email: newProfile.email,
+            mobile: newProfile.mobile || null,
+            roll_no: newProfile.rollNo || null,
+            staff_id: newProfile.staffId || null,
+            department: newProfile.department,
+            class_section: newProfile.classSection || null,
+          });
+        } catch (upsertErr) {
+          console.warn('Upsert fallback profile warning:', upsertErr);
+        }
 
         return newProfile;
       }

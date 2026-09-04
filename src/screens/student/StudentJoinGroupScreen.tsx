@@ -114,35 +114,7 @@ export const StudentJoinGroupScreen: React.FC<StudentJoinGroupScreenProps> = ({
           />
         </Card>
 
-        {/* Quick Sample Codes in Demo/Test Mode */}
-        <Card style={styles.quickSamplesCard}>
-          <Text style={styles.samplesHeading}>Available Codes in Demo Mode</Text>
-          <View style={styles.samplesRow}>
-            <TouchableOpacity
-              style={styles.sampleChip}
-              onPress={() => setJoinCode('DSD-A24')}
-            >
-              <Text style={styles.sampleCode}>DSD-A24</Text>
-              <Text style={styles.sampleSub}>DSD Sec A</Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.sampleChip}
-              onPress={() => setJoinCode('OS-B89')}
-            >
-              <Text style={styles.sampleCode}>OS-B89</Text>
-              <Text style={styles.sampleSub}>OS Sec B</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.sampleChip}
-              onPress={() => setJoinCode('DSC-C12')}
-            >
-              <Text style={styles.sampleCode}>DSC-C12</Text>
-              <Text style={styles.sampleSub}>DSC Sec C</Text>
-            </TouchableOpacity>
-          </View>
-        </Card>
 
         {/* Info card */}
         <Card style={styles.infoCard}>
@@ -213,35 +185,7 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: Spacing.lg,
   },
-  quickSamplesCard: {
-    padding: Spacing.md,
-  },
-  samplesHeading: {
-    ...Typography.captionBold,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.sm,
-  },
-  samplesRow: {
-    flexDirection: 'row',
-    gap: Spacing.xs,
-  },
-  sampleChip: {
-    flex: 1,
-    backgroundColor: Colors.surfaceElevated,
-    padding: Spacing.xs,
-    borderRadius: BorderRadius.sm,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-  },
-  sampleCode: {
-    ...Typography.captionBold,
-    color: Colors.secondary,
-  },
-  sampleSub: {
-    fontSize: 10,
-    color: Colors.textMuted,
-  },
+
   infoCard: {
     flexDirection: 'row',
     gap: Spacing.sm,

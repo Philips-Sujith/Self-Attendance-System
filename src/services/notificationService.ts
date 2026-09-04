@@ -45,10 +45,12 @@ export const notificationService = {
         });
       }
 
-      // In production EAS build: get Expo push token
-      // const tokenData = await Notifications.getExpoPushTokenAsync();
-      // return tokenData.data;
-      return 'ExponentPushToken[SAS_DEMO_TOKEN]';
+      try {
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        return tokenData.data;
+      } catch {
+        return null;
+      }
     } catch (e) {
       console.warn('Could not register push notifications:', e);
       return null;

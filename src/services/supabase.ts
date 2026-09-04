@@ -1,69 +1,62 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ENV } from '../config/env';
 
-// Cross-platform secure storage adapter
-const ExpoSecureStoreAdapter = {
+// In-memory fallback map for Node.js / Jest test environments
+const memoryStore = new Map<string, string>();
+
+const isNodeEnv = typeof window === 'undefined' && (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test');
+
+export const StorageAdapter = {
   getItem: async (key: string): Promise<string | null> => {
-    if (Platform.OS === 'web') {
-      try {
-        return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
-      } catch (e) {
-        return null;
-      }
+    if (isNodeEnv) {
+      return memoryStore.get(key) || null;
     }
     try {
-      return await SecureStore.getItemAsync(key);
-    } catch (e) {
-      return null;
+      return await AsyncStorage.getItem(key);
+    } catch {
+      return memoryStore.get(key) || null;
     }
   },
   setItem: async (key: string, value: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      try {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(key, value);
-        }
-      } catch (e) {
-        // ignore
-      }
+    if (isNodeEnv) {
+      memoryStore.set(key, value);
       return;
     }
     try {
-      await SecureStore.setItemAsync(key, value);
-    } catch (e) {
-      // ignore
+      await AsyncStorage.setItem(key, value);
+    } catch {
+      memoryStore.set(key, value);
     }
   },
   removeItem: async (key: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      try {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.removeItem(key);
-        }
-      } catch (e) {
-        // ignore
-      }
+    if (isNodeEnv) {
+      memoryStore.delete(key);
       return;
     }
     try {
-      await SecureStore.deleteItemAsync(key);
-    } catch (e) {
-      // ignore
+      await AsyncStorage.removeItem(key);
+    } catch {
+      memoryStore.delete(key);
     }
   },
 };
 
-const supabaseUrl = ENV.SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = ENV.SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const supabaseUrl = ENV.SUPABASE_URL;
+const supabaseAnonKey = ENV.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Supabase configuration missing: EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY must be provided.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: ExpoSecureStoreAdapter,
+    storage: StorageAdapter,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
   },
 });
+
+

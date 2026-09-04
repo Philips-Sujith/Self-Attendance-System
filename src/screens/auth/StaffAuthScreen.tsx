@@ -24,7 +24,7 @@ type StaffAuthScreenProps = NativeStackScreenProps<AuthStackParamList, 'StaffAut
 export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigation }) => {
   const initialMode = route.params?.mode || 'login';
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
-  const { signIn, signUpStaff, isLoading } = useAuth();
+  const { signIn, signUpStaff, isSubmitting } = useAuth();
 
   // Form state
   const [email, setEmail] = useState('');
@@ -34,9 +34,11 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
   const [department, setDepartment] = useState('Computer Science & Engineering');
   const [mobile, setMobile] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setErrorMessage(null);
+    setInfoMessage(null);
 
     if (!email.trim()) {
       setErrorMessage('Please enter your email address.');
@@ -71,7 +73,12 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
         mobile: mobile.trim(),
       });
 
-      if (!result.success) {
+      if (result.requiresEmailConfirmation) {
+        setInfoMessage(
+          'Account registered! If email confirmation is enabled on your Supabase project, please check your inbox (or verify the user in the Supabase Auth dashboard), then sign in.'
+        );
+        setIsLogin(true);
+      } else if (!result.success) {
         setErrorMessage(result.error || 'Registration failed.');
       }
     }
@@ -96,6 +103,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
               onPress={() => {
                 setIsLogin(true);
                 setErrorMessage(null);
+                setInfoMessage(null);
               }}
               activeOpacity={0.7}
             >
@@ -106,12 +114,21 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
               onPress={() => {
                 setIsLogin(false);
                 setErrorMessage(null);
+                setInfoMessage(null);
               }}
               activeOpacity={0.7}
             >
               <Text style={[styles.tabText, !isLogin && styles.activeTabText]}>Register</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Info Banner */}
+          {infoMessage && (
+            <View style={styles.infoBanner}>
+              <Ionicons name="mail-outline" size={18} color={Colors.secondary} />
+              <Text style={styles.infoBannerText}>{infoMessage}</Text>
+            </View>
+          )}
 
           {/* Error Banner */}
           {errorMessage && (
@@ -180,7 +197,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
             title={isLogin ? 'Sign In as Staff' : 'Create Staff Account'}
             variant="primary"
             size="lg"
-            loading={isLoading}
+            loading={isSubmitting}
             onPress={handleSubmit}
             style={styles.submitBtn}
           />
@@ -235,6 +252,22 @@ const styles = StyleSheet.create({
   },
   activeTabText: {
     color: Colors.white,
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(6, 182, 212, 0.12)',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.35)',
+  },
+  infoBannerText: {
+    ...Typography.captionBold,
+    color: Colors.secondary,
+    flex: 1,
   },
   errorBanner: {
     flexDirection: 'row',

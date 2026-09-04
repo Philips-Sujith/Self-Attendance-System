@@ -33,6 +33,13 @@ export interface SessionRosterStudent {
 }
 
 export const sessionService = {
+  // Generate standardized mDNS Network Session ID
+  generateNetworkSessionId: (groupCode?: string): string => {
+    const cleanCode = (groupCode || 'CLASS').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    const suffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `SAS-${cleanCode || 'CLASS'}-${suffix}`;
+  },
+
   // Start a new Attendance Session in Supabase
   startAttendanceSession: async (
     params: StartSessionParams
@@ -40,7 +47,7 @@ export const sessionService = {
     const startTime = new Date();
     const endTime = new Date(startTime.getTime() + params.durationMinutes * 60 * 1000);
     const dateStr = params.date || startTime.toISOString().split('T')[0];
-    const networkSessionId = `SAS-${params.groupCode || 'CLASS'}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const networkSessionId = sessionService.generateNetworkSessionId(params.groupCode);
 
     try {
       const { data, error } = await supabase

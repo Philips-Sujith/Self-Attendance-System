@@ -18,10 +18,10 @@ import { Ionicons } from '@expo/vector-icons';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const RootNavigator: React.FC = () => {
-  const { user, isLoading } = useAuth();
+  const { user, isRestoringSession } = useAuth();
 
-  // Show clean branded splash screen while resolving Supabase session & user role
-  if (isLoading) {
+  // Show clean branded splash screen ONLY while resolving initial Supabase session on app start
+  if (isRestoringSession) {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.logoBadge}>

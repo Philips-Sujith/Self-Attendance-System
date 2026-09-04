@@ -23,7 +23,7 @@ export const deviceSecurityService = {
         }
         return webId;
       } catch (e) {
-        return 'SAS-WEB-DEMO-DEVICE';
+        return 'SAS-WEB-' + Date.now().toString(36).toUpperCase();
       }
     }
 
