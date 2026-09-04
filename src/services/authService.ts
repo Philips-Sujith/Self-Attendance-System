@@ -26,9 +26,52 @@ export interface SignUpResult {
   error: Error | null;
 }
 
+// Module-level in-flight lock to guarantee exactly one active auth request at a time
+let isAuthActionInFlight = false;
+
+// Format Supabase Auth API errors with actionable user-friendly messages
+export const formatAuthError = (err: any): Error => {
+  if (!err) return new Error('An unknown authentication error occurred.');
+
+  const status = err.status || err.statusCode;
+  const code = err.code || '';
+  const message = (err.message || '').toLowerCase();
+
+  if (status === 429 || code === 'over_email_send_rate_limit' || message.includes('rate limit')) {
+    return new Error(
+      'Email rate limit exceeded by Supabase built-in email provider (maximum 3-4 emails/hour on free tier). Please wait before trying again, or disable "Confirm email" in Supabase Auth settings for testing.'
+    );
+  }
+
+  if (code === 'user_already_exists' || message.includes('user already registered') || message.includes('already exists')) {
+    return new Error('An account with this email address already exists. Please sign in instead.');
+  }
+
+  if (code === 'weak_password' || message.includes('weak password')) {
+    return new Error('Password should be at least 6 characters.');
+  }
+
+  if (status === 400 && (message.includes('invalid login credentials') || message.includes('invalid_credentials'))) {
+    return new Error('Invalid email or password. Please check your credentials and try again.');
+  }
+
+  if (message.includes('email not confirmed')) {
+    return new Error('Email address has not been confirmed yet. Please verify via email link or in Supabase Auth.');
+  }
+
+  return err instanceof Error ? err : new Error(err.message || String(err));
+};
+
 export const authService = {
   // Sign Up Staff Member (Real Supabase Auth + Profile)
   signUpStaff: async (params: SignUpStaffParams): Promise<SignUpResult> => {
+    if (isAuthActionInFlight) {
+      return {
+        profile: null,
+        error: new Error('A registration request is already processing. Please wait.'),
+      };
+    }
+    isAuthActionInFlight = true;
     try {
       const email = params.email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signUp({
@@ -45,10 +88,10 @@ export const authService = {
         },
       });
 
-      if (error) throw error;
+      if (error) throw formatAuthError(error);
       if (!data.user) throw new Error('Sign up failed: no user returned.');
 
-      // Check if session was returned directly
+      // Check if session was returned directly (when confirm email is disabled)
       if (data.session) {
         const profile = await authService.getUserProfile(data.user.id, {
           role: 'staff',
@@ -86,12 +129,21 @@ export const authService = {
         error: null,
       };
     } catch (err: any) {
-      return { profile: null, error: err };
+      return { profile: null, error: formatAuthError(err) };
+    } finally {
+      isAuthActionInFlight = false;
     }
   },
 
   // Sign Up Student (Real Supabase Auth + Profile)
   signUpStudent: async (params: SignUpStudentParams): Promise<SignUpResult> => {
+    if (isAuthActionInFlight) {
+      return {
+        profile: null,
+        error: new Error('A registration request is already processing. Please wait.'),
+      };
+    }
+    isAuthActionInFlight = true;
     try {
       const email = params.email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signUp({
@@ -109,10 +161,10 @@ export const authService = {
         },
       });
 
-      if (error) throw error;
+      if (error) throw formatAuthError(error);
       if (!data.user) throw new Error('Sign up failed: no user returned.');
 
-      // Check if session was returned directly
+      // Check if session was returned directly (when confirm email is disabled)
       if (data.session) {
         const profile = await authService.getUserProfile(data.user.id, {
           role: 'student',
@@ -152,12 +204,21 @@ export const authService = {
         error: null,
       };
     } catch (err: any) {
-      return { profile: null, error: err };
+      return { profile: null, error: formatAuthError(err) };
+    } finally {
+      isAuthActionInFlight = false;
     }
   },
 
   // Sign In with Email & Password (Real Supabase Auth)
   signIn: async (email: string, password: string): Promise<{ profile: UserProfile | null; error: Error | null }> => {
+    if (isAuthActionInFlight) {
+      return {
+        profile: null,
+        error: new Error('An authentication request is already processing. Please wait.'),
+      };
+    }
+    isAuthActionInFlight = true;
     try {
       const normalizedEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -165,7 +226,7 @@ export const authService = {
         password,
       });
 
-      if (error) throw error;
+      if (error) throw formatAuthError(error);
       if (!data.user) throw new Error('Login failed: no user returned from credentials.');
 
       const profile = await authService.getUserProfile(data.user.id);
@@ -175,7 +236,9 @@ export const authService = {
 
       return { profile, error: null };
     } catch (err: any) {
-      return { profile: null, error: err };
+      return { profile: null, error: formatAuthError(err) };
+    } finally {
+      isAuthActionInFlight = false;
     }
   },
 

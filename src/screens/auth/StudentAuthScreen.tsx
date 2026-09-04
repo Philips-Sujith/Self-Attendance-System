@@ -37,6 +37,8 @@ export const StudentAuthScreen: React.FC<StudentAuthScreenProps> = ({ route, nav
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     setErrorMessage(null);
     setInfoMessage(null);
 
@@ -206,6 +208,7 @@ export const StudentAuthScreen: React.FC<StudentAuthScreenProps> = ({ route, nav
             variant="secondary"
             size="lg"
             loading={isSubmitting}
+            disabled={isSubmitting}
             onPress={handleSubmit}
             style={styles.submitBtn}
           />

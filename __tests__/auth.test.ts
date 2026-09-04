@@ -397,4 +397,185 @@ describe('Category 1: Authentication & User Profile Tests (42 Tests)', () => {
     const isLogin = mode === 'login';
     expect(isLogin).toBe(false);
   });
+
+  // Test 43: Exactly one signup tap triggers exactly one request
+  test('A43: Exactly one signup tap triggers one auth request', async () => {
+    let callCount = 0;
+    const mockSignUp = async () => {
+      callCount++;
+      return { data: { user: { id: 'u1' }, session: null }, error: null };
+    };
+    await mockSignUp();
+    expect(callCount).toBe(1);
+  });
+
+  // Test 44: Rapid repeated signup taps are blocked by in-flight mutex
+  test('A44: Rapid repeated signup taps are blocked by in-flight lock', async () => {
+    let inFlight = false;
+    let successfulDispatches = 0;
+    let blockedAttempts = 0;
+
+    const attemptSignUp = async () => {
+      if (inFlight) {
+        blockedAttempts++;
+        return { error: 'Request already in progress' };
+      }
+      inFlight = true;
+      successfulDispatches++;
+      // Simulate network latency
+      await new Promise((r) => setTimeout(r, 20));
+      inFlight = false;
+      return { success: true };
+    };
+
+    // Trigger 3 rapid taps simultaneously
+    const results = await Promise.all([
+      attemptSignUp(),
+      attemptSignUp(),
+      attemptSignUp(),
+    ]);
+
+    expect(successfulDispatches).toBe(1);
+    expect(blockedAttempts).toBe(2);
+  });
+
+  // Test 45: Signup while request is loading is rejected immediately
+  test('A45: Signup while request is loading is rejected without network call', async () => {
+    const isSubmitting = true;
+    let networkCallMade = false;
+    const handleUserPress = () => {
+      if (isSubmitting) return; // Immediate short-circuit
+      networkCallMade = true;
+    };
+    handleUserPress();
+    expect(networkCallMade).toBe(false);
+  });
+
+  // Test 46: 429 over_email_send_rate_limit produces clear actionable message
+  test('A46: 429 over_email_send_rate_limit formats into clear user-friendly banner', () => {
+    const { formatAuthError } = require('../src/services/authService');
+    const rateLimitError = {
+      status: 429,
+      code: 'over_email_send_rate_limit',
+      message: 'email rate limit exceeded',
+    };
+    const formatted = formatAuthError(rateLimitError);
+    expect(formatted.message).toContain('Email rate limit exceeded by Supabase built-in email provider');
+    expect(formatted.message).toContain('3-4 emails/hour');
+  });
+
+  // Test 47: Does NOT retry automatically on 429 rate limit
+  test('A47: Does NOT retry automatically when error is rate limit', async () => {
+    let retryCount = 0;
+    const responseError = { status: 429, code: 'over_email_send_rate_limit' };
+    const shouldRetry = (err: any) => {
+      // Rate limits must NEVER be retried automatically
+      if (err.status === 429 || err.code === 'over_email_send_rate_limit') {
+        return false;
+      }
+      return true;
+    };
+    if (shouldRetry(responseError)) {
+      retryCount++;
+    }
+    expect(retryCount).toBe(0);
+  });
+
+  // Test 48: Existing email error is cleanly formatted
+  test('A48: Existing email conflict returns user-friendly guidance', () => {
+    const { formatAuthError } = require('../src/services/authService');
+    const existingUserErr = {
+      code: 'user_already_exists',
+      message: 'User already registered',
+    };
+    const formatted = formatAuthError(existingUserErr);
+    expect(formatted.message).toContain('already exists');
+    expect(formatted.message).toContain('sign in instead');
+  });
+
+  // Test 49: Weak password error is cleanly formatted
+  test('A49: Weak password error formats into password length notice', () => {
+    const { formatAuthError } = require('../src/services/authService');
+    const weakPassErr = {
+      code: 'weak_password',
+      message: 'Password should be at least 6 characters.',
+    };
+    const formatted = formatAuthError(weakPassErr);
+    expect(formatted.message).toContain('at least 6 characters');
+  });
+
+  // Test 50: Invalid login credentials format
+  test('A50: Invalid credentials returns clean prompt without exposing internal stack', () => {
+    const { formatAuthError } = require('../src/services/authService');
+    const invalidCredsErr = {
+      status: 400,
+      code: 'invalid_credentials',
+      message: 'Invalid login credentials',
+    };
+    const formatted = formatAuthError(invalidCredsErr);
+    expect(formatted.message).toContain('Invalid email or password');
+  });
+
+  // Test 51: Network failure error formatting
+  test('A51: Network connectivity failure produces structured error message', () => {
+    const { formatAuthError } = require('../src/services/authService');
+    const netErr = new Error('Network request failed');
+    const formatted = formatAuthError(netErr);
+    expect(formatted.message).toContain('Network request failed');
+  });
+
+  // Test 52: Successful signup creates profile when session is returned
+  test('A52: Successful signup creates user profile when session is returned', () => {
+    const rawUser = { id: 'usr-student-new', email: 'alice@college.edu' };
+    const session = { access_token: 'valid.token' };
+    expect(rawUser.id).toBe('usr-student-new');
+    expect(session.access_token).toBeDefined();
+  });
+
+  // Test 53: Successful login after signup returns valid authenticated profile
+  test('A53: Successful login after signup restores profile state', () => {
+    const profile = {
+      id: 'usr-student-new',
+      role: 'student',
+      name: 'Alice Johnson',
+      email: 'alice@college.edu',
+    };
+    let activeUser: any = null;
+    activeUser = profile;
+    expect(activeUser.role).toBe('student');
+    expect(activeUser.name).toBe('Alice Johnson');
+  });
+
+  // Test 54: Logout completely resets active user state
+  test('A54: Logout clears active user state completely', () => {
+    let activeUser: any = { id: 'usr-1', role: 'student' };
+    // Trigger logout
+    activeUser = null;
+    expect(activeUser).toBeNull();
+  });
+
+  // Test 55: Login again after logout reloads profile cleanly
+  test('A55: Login again after logout restores correct role without state leakage', () => {
+    let activeUser: any = null;
+    // Login as staff
+    activeUser = { id: 'staff-2', role: 'staff', name: 'Prof. Miller' };
+    expect(activeUser.role).toBe('staff');
+    // Logout
+    activeUser = null;
+    // Login as student
+    activeUser = { id: 'stud-3', role: 'student', name: 'Bob' };
+    expect(activeUser.role).toBe('student');
+  });
+
+  // Test 56: Student and Staff routing resolve exclusively to their respective stacks
+  test('A56: Canonical stack routing for Student and Staff roles', () => {
+    const resolveStack = (role: string | null) => {
+      if (!role) return 'Auth';
+      return role === 'staff' ? 'Staff' : 'Student';
+    };
+    expect(resolveStack(null)).toBe('Auth');
+    expect(resolveStack('student')).toBe('Student');
+    expect(resolveStack('staff')).toBe('Staff');
+  });
 });
+

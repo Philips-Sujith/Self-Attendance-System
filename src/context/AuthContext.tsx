@@ -89,33 +89,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     password: string
   ): Promise<AuthActionResult> => {
+    if (isSubmitting) {
+      return { success: false, error: 'An authentication request is already in progress.' };
+    }
     setIsSubmitting(true);
     try {
       const { profile, error } = await authService.signIn(email, password);
       if (error || !profile) {
-        setIsSubmitting(false);
         return {
           success: false,
           error: error?.message || 'Invalid email or password. Please try again.',
         };
       }
       setUser(profile);
-      setIsSubmitting(false);
       return { success: true };
     } catch (err: any) {
-      setIsSubmitting(false);
       return { success: false, error: err.message || 'An unexpected error occurred during sign in.' };
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const signUpStaff = async (
     params: SignUpStaffParams
   ): Promise<AuthActionResult> => {
+    if (isSubmitting) {
+      return { success: false, error: 'A registration request is already in progress.' };
+    }
     setIsSubmitting(true);
     try {
       const { profile, requiresEmailConfirmation, error } = await authService.signUpStaff(params);
       if (error) {
-        setIsSubmitting(false);
         return {
           success: false,
           error: error.message || 'Staff registration failed. Please check your information.',
@@ -123,7 +127,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (requiresEmailConfirmation) {
-        setIsSubmitting(false);
         return {
           success: true,
           requiresEmailConfirmation: true,
@@ -131,7 +134,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!profile) {
-        setIsSubmitting(false);
         return {
           success: false,
           error: 'Registration succeeded but profile could not be created.',
@@ -139,22 +141,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setUser(profile);
-      setIsSubmitting(false);
       return { success: true };
     } catch (err: any) {
-      setIsSubmitting(false);
       return { success: false, error: err.message || 'An unexpected registration error occurred.' };
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const signUpStudent = async (
     params: SignUpStudentParams
   ): Promise<AuthActionResult> => {
+    if (isSubmitting) {
+      return { success: false, error: 'A registration request is already in progress.' };
+    }
     setIsSubmitting(true);
     try {
       const { profile, requiresEmailConfirmation, error } = await authService.signUpStudent(params);
       if (error) {
-        setIsSubmitting(false);
         return {
           success: false,
           error: error.message || 'Student registration failed. Please check your information.',
@@ -162,7 +166,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (requiresEmailConfirmation) {
-        setIsSubmitting(false);
         return {
           success: true,
           requiresEmailConfirmation: true,
@@ -170,7 +173,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!profile) {
-        setIsSubmitting(false);
         return {
           success: false,
           error: 'Registration succeeded but profile could not be created.',
@@ -178,11 +180,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setUser(profile);
-      setIsSubmitting(false);
       return { success: true };
     } catch (err: any) {
-      setIsSubmitting(false);
       return { success: false, error: err.message || 'An unexpected registration error occurred.' };
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

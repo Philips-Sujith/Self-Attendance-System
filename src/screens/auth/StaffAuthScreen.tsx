@@ -37,6 +37,8 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     setErrorMessage(null);
     setInfoMessage(null);
 
@@ -198,6 +200,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ route, navigat
             variant="primary"
             size="lg"
             loading={isSubmitting}
+            disabled={isSubmitting}
             onPress={handleSubmit}
             style={styles.submitBtn}
           />
