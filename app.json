@@ -14,7 +14,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sas.attendance"
+      "bundleIdentifier": "com.sas.attendance",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "SAS Attendance uses the local Wi-Fi network to detect the teacher's active attendance beacon in the classroom.",
+        "NSBonjourServices": [
+          "_sas-session._tcp"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +30,14 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.sas.attendance",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.NEARBY_WIFI_DEVICES"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

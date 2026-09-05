@@ -7,6 +7,7 @@ module.exports = {
   moduleNameMapper: {
     '^expo-file-system(.*)$': '<rootDir>/__mocks__/expo-file-system.js',
     '^expo-sharing(.*)$': '<rootDir>/__mocks__/expo-sharing.js',
+    '^expo-print(.*)$': '<rootDir>/__mocks__/expo-print.js',
     '^expo-secure-store(.*)$': '<rootDir>/__mocks__/expo-secure-store.js',
     '^react-native-url-polyfill(.*)$': '<rootDir>/__mocks__/react-native-url-polyfill.js',
   },

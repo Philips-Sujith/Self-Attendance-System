@@ -20,16 +20,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { groupService, RosterMember } from '../../services/groupService';
 import { sessionService, SessionRosterStudent } from '../../services/sessionService';
 import { csvExportService } from '../../services/csvExportService';
+import { pdfExportService } from '../../services/pdfExportService';
+import { useAuth } from '../../context/AuthContext';
 import { AttendanceSession, CourseGroup } from '../../types';
 
 type StaffReportsScreenProps = NativeStackScreenProps<StaffStackParamList, 'StaffSessionReport'>;
 
 export const StaffReportsScreen: React.FC<StaffReportsScreenProps> = ({ route }) => {
   const { session } = route.params;
+  const { user } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isExportingMaster, setIsExportingMaster] = useState(false);
   const [isExportingSession, setIsExportingSession] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [roster, setRoster] = useState<SessionRosterStudent[]>([]);
   const [allStudents, setAllStudents] = useState<RosterMember[]>([]);
   const [pastSessions, setPastSessions] = useState<AttendanceSession[]>([]);
@@ -118,6 +122,41 @@ export const StaffReportsScreen: React.FC<StaffReportsScreenProps> = ({ route })
     }
   };
 
+  // Handle Single Session PDF Export
+  const handleExportSessionPDF = async (targetSession: AttendanceSession) => {
+    setIsExportingPDF(true);
+    const groupData: CourseGroup = {
+      id: session.groupId,
+      name: session.groupName || 'Course Group',
+      code: session.groupCode || 'CLASS',
+      section: 'Section',
+      staffId: session.staffId,
+      joinCode: session.groupCode || 'JOIN',
+      scheduleDay: 'Class Schedule',
+      schedulePeriod: targetSession.period,
+      studentCount: roster.length,
+      createdAt: new Date().toISOString(),
+    };
+
+    const targetRoster =
+      targetSession.id === session.id
+        ? roster
+        : await sessionService.getSessionRosterAndRecords(targetSession.id, session.groupId);
+
+    const result = await pdfExportService.generateAndShareSessionPDF({
+      group: groupData,
+      session: targetSession,
+      roster: targetRoster,
+      staffName: user?.name || 'Faculty Instructor',
+      staffEmail: user?.email,
+    });
+
+    setIsExportingPDF(false);
+    if (!result.success) {
+      Alert.alert('PDF Export Failed', result.error || 'Could not export session PDF.');
+    }
+  };
+
   const presentCount = roster.filter((r) => r.status !== 'absent').length;
   const absentCount = roster.filter((r) => r.status === 'absent').length;
   const attendanceRate = roster.length > 0 ? Math.round((presentCount / roster.length) * 100) : 0;
@@ -127,7 +166,7 @@ export const StaffReportsScreen: React.FC<StaffReportsScreenProps> = ({ route })
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
       <Header
         title={`${session.groupCode || 'Course'} Reports`}
-        subtitle="Attendance Analytics & CSV Export"
+        subtitle="Attendance Analytics & Export"
         showBack
       />
       {isLoading ? (
@@ -208,21 +247,32 @@ export const StaffReportsScreen: React.FC<StaffReportsScreenProps> = ({ route })
               </View>
             </View>
 
-            <Button
-              title="Export This Session CSV"
-              variant="outline"
-              size="sm"
-              iconName="download-outline"
-              loading={isExportingSession}
-              onPress={() => handleExportSessionCSV(session)}
-              style={{ marginTop: Spacing.md }}
-            />
+            <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md }}>
+              <Button
+                title="Export PDF"
+                variant="primary"
+                size="sm"
+                iconName="document-text-outline"
+                loading={isExportingPDF}
+                onPress={() => handleExportSessionPDF(session)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Export CSV"
+                variant="outline"
+                size="sm"
+                iconName="download-outline"
+                loading={isExportingSession}
+                onPress={() => handleExportSessionCSV(session)}
+                style={{ flex: 1 }}
+              />
+            </View>
           </Card>
 
           {/* Past Sessions Archive */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Attendance Sessions History ({pastSessions.length})</Text>
-            <Text style={styles.sectionSubtitle}>Tap to download individual session CSV spreadsheet</Text>
+            <Text style={styles.sectionSubtitle}>Tap to download individual session reports</Text>
           </View>
 
           {pastSessions.map((sess, idx) => (
@@ -236,13 +286,22 @@ export const StaffReportsScreen: React.FC<StaffReportsScreenProps> = ({ route })
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.exportBtnSmall}
-                  onPress={() => handleExportSessionCSV(sess)}
-                >
-                  <Ionicons name="cloud-download-outline" size={18} color={Colors.secondary} />
-                  <Text style={styles.exportBtnSmallText}>CSV</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <TouchableOpacity
+                    style={styles.exportBtnSmall}
+                    onPress={() => handleExportSessionPDF(sess)}
+                  >
+                    <Ionicons name="document-text-outline" size={16} color={Colors.primaryLight} />
+                    <Text style={[styles.exportBtnSmallText, { color: Colors.primaryLight }]}>PDF</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.exportBtnSmall}
+                    onPress={() => handleExportSessionCSV(sess)}
+                  >
+                    <Ionicons name="cloud-download-outline" size={16} color={Colors.secondary} />
+                    <Text style={styles.exportBtnSmallText}>CSV</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </Card>
           ))}

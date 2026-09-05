@@ -9,6 +9,8 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
@@ -20,9 +22,11 @@ import { Input } from '../../components/common/Input';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StaffStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../context/AuthContext';
 import { AttendanceStatus } from '../../types';
 import { sessionService, SessionRosterStudent } from '../../services/sessionService';
 import { networkProximityService } from '../../services/networkProximityService';
+import { pdfExportService } from '../../services/pdfExportService';
 
 type StaffSessionScreenProps = NativeStackScreenProps<StaffStackParamList, 'StaffSessionLive'>;
 
@@ -30,6 +34,7 @@ type FilterTab = 'all' | 'present' | 'absent';
 
 export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, navigation }) => {
   const { session } = route.params;
+  const { user } = useAuth();
 
   const calculateInitialSeconds = () => {
     if (session.status !== 'active') return 0;
@@ -44,6 +49,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterTab, setFilterTab] = useState<FilterTab>('all');
   const [isAdvertisingmDNS, setIsAdvertisingmDNS] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
 
   // Manual Override Modal state
   const [selectedStudent, setSelectedStudent] = useState<SessionRosterStudent | null>(null);
@@ -64,13 +70,19 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
     fetchSessionRoster();
   }, [fetchSessionRoster]);
 
-  // Start mDNS advertisement and Supabase Realtime subscription on mount
+  // Start mDNS advertisement, status listener, and Realtime subscription on mount
   useEffect(() => {
+    const unsubAdvertiseStatus = networkProximityService.onAdvertiseStatus((status) => {
+      setIsAdvertisingmDNS(status === 'advertising');
+    });
+
     if (isSessionActive) {
       // 1. Start mDNS advertising on local network
-      networkProximityService.startAdvertising(session.networkSessionId, session.groupCode).then(() => {
-        setIsAdvertisingmDNS(true);
-      });
+      networkProximityService
+        .startAdvertising(session.networkSessionId, session.groupCode)
+        .then((result) => {
+          setIsAdvertisingmDNS(result.success);
+        });
     }
 
     // 2. Subscribe to live Supabase Realtime stream of marks
@@ -78,9 +90,22 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
       fetchSessionRoster();
     });
 
+    // 3. Handle AppState backgrounding/foregrounding
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        networkProximityService.stopAdvertising();
+      } else if (nextAppState === 'active' && isSessionActive) {
+        networkProximityService.startAdvertising(session.networkSessionId, session.groupCode);
+      }
+    };
+
+    const appStateSub = AppState.addEventListener('change', handleAppStateChange);
+
     return () => {
       networkProximityService.stopAdvertising();
+      unsubAdvertiseStatus();
       unsubscribeRealtime();
+      appStateSub.remove();
     };
   }, [session.id, session.networkSessionId, session.groupCode, isSessionActive, fetchSessionRoster]);
 
@@ -175,6 +200,35 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
     );
   };
 
+  const handleExportPDF = async () => {
+    setIsExportingPDF(true);
+    const group = {
+      id: session.groupId,
+      name: session.groupName || 'Course Group',
+      code: session.groupCode || 'CLASS',
+      section: 'Section',
+      staffId: session.staffId,
+      staffName: user?.name || 'Faculty Instructor',
+      joinCode: '',
+      scheduleDay: '',
+      schedulePeriod: session.period,
+      createdAt: session.date,
+    };
+
+    const result = await pdfExportService.generateAndShareSessionPDF({
+      group,
+      session,
+      roster,
+      staffName: user?.name || 'Faculty Instructor',
+      staffEmail: user?.email,
+    });
+
+    setIsExportingPDF(false);
+    if (!result.success) {
+      Alert.alert('Export Failed', result.error || 'Failed to generate attendance PDF.');
+    }
+  };
+
   const filteredRoster = roster.filter((item) => {
     if (filterTab === 'present') return item.status !== 'absent';
     if (filterTab === 'absent') return item.status === 'absent';
@@ -185,7 +239,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
     <SafeAreaView style={styles.safeArea}>
       <Header
         title={session.groupCode || 'Attendance Session'}
-        subtitle={`Session: ${session.date} • ${session.period}`}
+        subtitle={`Session: ${session.date} • Period ${session.period}`}
         showBack
         rightElement={
           <Badge
@@ -209,7 +263,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
         <Card variant="glow" style={styles.liveDashboardCard}>
           <View style={styles.counterRow}>
             <View>
-              <Text style={styles.counterLabel}>LIVE PRESENT COUNT</Text>
+              <Text style={styles.counterLabel}>PRESENT COUNT</Text>
               <Text style={styles.counterValue}>
                 {presentCount} <Text style={styles.counterTotal}>/ {totalCount}</Text>
               </Text>
@@ -218,7 +272,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
             <View style={styles.timerBox}>
               <Ionicons
                 name="timer-outline"
-                size={18}
+                size={16}
                 color={secondsRemaining < 60 && isSessionActive ? Colors.danger : Colors.primaryLight}
               />
               <Text
@@ -238,25 +292,22 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
             <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
           </View>
 
-          {/* mDNS & Realtime Broadcast Banner */}
+          {/* Local Attendance Network Status */}
           <View style={styles.broadcastBanner}>
             <Ionicons
               name={isAdvertisingmDNS ? 'wifi' : 'wifi-outline'}
-              size={18}
+              size={16}
               color={isAdvertisingmDNS ? Colors.secondary : Colors.textMuted}
             />
             <View style={styles.broadcastTextCol}>
               <Text style={styles.broadcastTitle}>
                 {isAdvertisingmDNS
-                  ? 'Advertising mDNS Proximity Signal'
-                  : 'mDNS Broadcast Inactive'}
-              </Text>
-              <Text style={styles.broadcastDesc}>
-                {session.networkSessionId} (_sas-session._tcp.local) • Realtime Active
+                  ? 'Local attendance network active'
+                  : 'Local attendance network unavailable'}
               </Text>
             </View>
             <Badge
-              label={isAdvertisingmDNS ? 'ON AIR' : 'OFF'}
+              label={isAdvertisingmDNS ? 'ACTIVE' : 'OFF'}
               variant={isAdvertisingmDNS ? 'secondary' : 'neutral'}
               size="sm"
             />
@@ -293,18 +344,16 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
 
         {/* Live Roster & Manual Override Section */}
         <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>
-              {filterTab === 'present'
-                ? `Present Students (${presentCount})`
-                : filterTab === 'absent'
-                ? `Absent Students (${absentCount})`
-                : `Live Session Roster (${totalCount})`}
-            </Text>
-            <Text style={styles.sectionSubtitle}>
-              Updates live via Supabase Realtime • Tap student for manual audit override
-            </Text>
-          </View>
+          <Text style={styles.sectionTitle}>
+            {filterTab === 'present'
+              ? `Present Students (${presentCount})`
+              : filterTab === 'absent'
+              ? `Absent Students (${absentCount})`
+              : `Session Roster (${totalCount})`}
+          </Text>
+          <Text style={styles.sectionSubtitle}>
+            Tap a student for manual attendance override
+          </Text>
         </View>
 
         {/* Student List */}
@@ -330,15 +379,9 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
                   <View style={styles.studentInfo}>
                     <Text style={styles.studentName}>{student.name}</Text>
                     <Text style={styles.studentRollNo}>Roll: {student.rollNo}</Text>
-                    {student.deviceId && student.status !== 'absent' && (
-                      <View style={styles.deviceAuditBadge}>
-                        <Ionicons name="phone-portrait-outline" size={11} color={Colors.textMuted} />
-                        <Text style={styles.deviceAuditText}>{student.deviceId}</Text>
-                      </View>
-                    )}
                     {student.overrideReason && (
                       <Text style={styles.overrideReasonText}>
-                        Audit Note: "{student.overrideReason}"
+                        Override: "{student.overrideReason}"
                       </Text>
                     )}
                   </View>
@@ -374,7 +417,7 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
         )}
 
         {/* Session Action Footer */}
-        {isSessionActive && (
+        {isSessionActive ? (
           <Button
             title="End Session Early"
             variant="danger"
@@ -383,6 +426,18 @@ export const StaffSessionScreen: React.FC<StaffSessionScreenProps> = ({ route, n
             onPress={handleEndSession}
             style={styles.endSessionBtn}
           />
+        ) : (
+          <View style={styles.completedActionsBox}>
+            <Button
+              title="Export Attendance PDF"
+              variant="primary"
+              size="md"
+              iconName="document-text-outline"
+              loading={isExportingPDF}
+              onPress={handleExportPDF}
+              style={styles.exportPdfBtn}
+            />
+          </View>
         )}
       </ScrollView>
 
@@ -665,6 +720,12 @@ const styles = StyleSheet.create({
   },
   endSessionBtn: {
     marginTop: Spacing.md,
+  },
+  completedActionsBox: {
+    marginTop: Spacing.md,
+  },
+  exportPdfBtn: {
+    width: '100%',
   },
   modalBackdrop: {
     flex: 1,

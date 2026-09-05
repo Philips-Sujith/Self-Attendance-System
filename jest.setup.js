@@ -9,6 +9,13 @@ jest.mock('expo-sharing', () => ({
   isAvailableAsync: jest.fn().mockResolvedValue(true),
   shareAsync: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('expo-print', () => ({
+  printToFileAsync: jest.fn().mockResolvedValue({
+    uri: 'file:///mock/documents/SAS_Attendance.pdf',
+    numberOfPages: 1,
+  }),
+  printAsync: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn().mockResolvedValue(null),
   setItemAsync: jest.fn().mockResolvedValue(undefined),
