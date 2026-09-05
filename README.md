@@ -4,7 +4,6 @@
 [![Expo SDK](https://img.shields.io/badge/Expo-v57.0.0-black.svg?logo=expo)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/React%20Native-0.86.3-61DAFB.svg?logo=react)](https://reactnative.dev)
 [![Supabase](https://img.shields.io/badge/Supabase-Database%20%26%20Auth-3ECF8E.svg?logo=supabase)](https://supabase.com)
-[![Tests](https://img.shields.io/badge/Tests-365%20passed-success.svg)](#testing--quality-assurance)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **SAS (Self Attendance System)** is a modern, proxy-resistant mobile attendance management platform engineered for universities and educational institutions. It empowers faculty instructors to launch localized attendance sessions in classrooms, while students self-mark their presence through physical local-network discovery, hardware-bound anti-proxy safeguards, and real-time database synchronization.
