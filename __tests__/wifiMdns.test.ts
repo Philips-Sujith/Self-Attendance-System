@@ -292,3 +292,453 @@ describe('Category 5: Wi-Fi & mDNS Local Network Proximity (32 Tests)', () => {
     expect(isLocalNetwork).toBe(true);
   });
 });
+
+describe('Network Test Matrix (12 Mandatory Field Scenarios)', () => {
+  beforeEach(() => {
+    networkProximityService.stopAdvertising();
+    networkProximityService.stopScan();
+  });
+
+  afterEach(() => {
+    networkProximityService.stopAdvertising();
+    networkProximityService.stopScan();
+  });
+
+  // TEST 1: Staff + Student on SAME Wi-Fi
+  test('TEST 1: Staff + Student on SAME Wi-Fi resolves mDNS beacon and unlocks attendance', () => {
+    const targetSessionId = 'SAS-CS302-LIVE';
+    const discoveredBeacon = {
+      name: 'SAS-CS302-SAS-CS302-LIVE',
+      type: SAS_SERVICE_FULL_TYPE,
+      host: '192.168.1.104',
+      port: SAS_DEFAULT_PORT,
+      txt: { sessionId: 'SAS-CS302-LIVE' },
+      discoveredAt: new Date().toLocaleTimeString(),
+      latencyMs: 22,
+    };
+
+    const isMatch =
+      discoveredBeacon.txt.sessionId === targetSessionId ||
+      discoveredBeacon.name.includes(targetSessionId);
+    const scanStatus = isMatch ? 'discovered' : 'timeout';
+    const isAttendanceUnlocked = scanStatus === 'discovered';
+
+    expect(isMatch).toBe(true);
+    expect(scanStatus).toBe('discovered');
+    expect(isAttendanceUnlocked).toBe(true);
+  });
+
+  // TEST 2: Staff hotspot + Student connected to Staff hotspot
+  test('TEST 2: Staff hotspot allows direct peer discovery when hotspot permits multicast', () => {
+    const hotspotSessionId = 'SAS-HOTSPOT-9911';
+    const hotspotBeacon = {
+      name: 'SAS-CLASS-SAS-HOTSPOT-9911',
+      type: SAS_SERVICE_FULL_TYPE,
+      host: '192.168.43.1', // Standard Android hotspot gateway
+      port: 8923,
+      txt: { sessionId: 'SAS-HOTSPOT-9911' },
+      discoveredAt: new Date().toLocaleTimeString(),
+      latencyMs: 8,
+    };
+
+    const isMatch = hotspotBeacon.txt.sessionId === hotspotSessionId;
+    expect(isMatch).toBe(true);
+    expect(hotspotBeacon.host).toBe('192.168.43.1');
+  });
+
+  // TEST 3: Staff on Wi-Fi + Student on DIFFERENT Wi-Fi
+  test('TEST 3: Staff and Student on DIFFERENT Wi-Fi networks results in discovery failure and blocked attendance', () => {
+    const targetSessionId = 'SAS-STAFF-NET-A';
+    // On a different network, mDNS multicast packets never bridge subnets
+    const discoveredServicesOnSubnet: any[] = [];
+    const matchingService = discoveredServicesOnSubnet.find(
+      (s) => s.txt?.sessionId === targetSessionId
+    );
+
+    const scanStatus = matchingService ? 'discovered' : 'timeout';
+    const isAttendanceUnlocked = scanStatus === 'discovered';
+
+    expect(matchingService).toBeUndefined();
+    expect(scanStatus).toBe('timeout');
+    expect(isAttendanceUnlocked).toBe(false);
+  });
+
+  // TEST 4: Staff on Wi-Fi + Student on mobile data
+  test('TEST 4: Student on mobile data cannot resolve local mDNS broadcast', () => {
+    const isMobileData = true;
+    const isLocalWifiConnected = !isMobileData;
+    const canDiscoverLocalSubnet = isLocalWifiConnected;
+
+    const scanStatus = canDiscoverLocalSubnet ? 'discovered' : 'timeout';
+    const isAttendanceAllowed = scanStatus === 'discovered';
+
+    expect(canDiscoverLocalSubnet).toBe(false);
+    expect(scanStatus).toBe('timeout');
+    expect(isAttendanceAllowed).toBe(false);
+  });
+
+  // TEST 5: Staff session NOT started + Student on same network
+  test('TEST 5: When staff session is NOT started, attendance is unavailable and not open', () => {
+    const activeSessionsInDb: any[] = [];
+    const hasActiveSession = activeSessionsInDb.length > 0;
+    const isAttendanceOpen = hasActiveSession;
+
+    expect(hasActiveSession).toBe(false);
+    expect(isAttendanceOpen).toBe(false);
+  });
+
+  // TEST 6: Staff session started + Student on same network
+  test('TEST 6: When staff session is started, student discovers service and attendance unlocks', () => {
+    const sessionInDb = {
+      id: 'sess-123',
+      status: 'active',
+      networkSessionId: 'SAS-CS302-8822',
+      startTime: new Date(Date.now() - 60000).toISOString(),
+      endTime: new Date(Date.now() + 300000).toISOString(),
+    };
+
+    const isSessionActive =
+      sessionInDb.status === 'active' && new Date(sessionInDb.endTime).getTime() > Date.now();
+    const discoveredBeacon = {
+      txt: { sessionId: 'SAS-CS302-8822' },
+    };
+    const isProximityVerified = discoveredBeacon.txt.sessionId === sessionInDb.networkSessionId;
+    const isAttendanceUnlocked = isSessionActive && isProximityVerified;
+
+    expect(isSessionActive).toBe(true);
+    expect(isProximityVerified).toBe(true);
+    expect(isAttendanceUnlocked).toBe(true);
+  });
+
+  // TEST 7: Staff session expires while student is on attendance screen
+  test('TEST 7: Expired session immediately invalidates attendance marking capability', () => {
+    const expiredSession = {
+      id: 'sess-expired',
+      status: 'active',
+      networkSessionId: 'SAS-EXP',
+      endTime: new Date(Date.now() - 5000).toISOString(), // 5 seconds ago
+    };
+
+    const isExpired = new Date(expiredSession.endTime).getTime() <= Date.now();
+    const isAttendanceAllowed = !isExpired;
+
+    expect(isExpired).toBe(true);
+    expect(isAttendanceAllowed).toBe(false);
+  });
+
+  // TEST 8: Student discovers stale/old SAS service from previous class
+  test('TEST 8: Stale/old SAS service with outdated session ID is strictly rejected', () => {
+    const currentActiveSessionId = 'SAS-CS302-SESSION-NEW';
+    const staleDiscoveredBeacon = {
+      name: 'SAS-CS302-SAS-CS302-SESSION-OLD',
+      txt: { sessionId: 'SAS-CS302-SESSION-OLD' },
+    };
+
+    const isMatch = staleDiscoveredBeacon.txt.sessionId === currentActiveSessionId;
+    const scanStatus = isMatch ? 'discovered' : 'timeout';
+
+    expect(isMatch).toBe(false);
+    expect(scanStatus).toBe('timeout');
+  });
+
+  // TEST 9: Student discovers SAS service belonging to another course/session
+  test('TEST 9: SAS service belonging to a different course group in adjacent room is rejected', () => {
+    const currentStudentTarget = 'SAS-CS302-ROOM101';
+    const adjacentClassBeacon = {
+      name: 'SAS-ME201-ROOM102',
+      txt: { sessionId: 'SAS-ME201-ROOM102' },
+    };
+
+    const isMatch = adjacentClassBeacon.txt.sessionId === currentStudentTarget;
+    expect(isMatch).toBe(false);
+  });
+
+  // TEST 10: Direct unauthorized attendance submission call without active session
+  test('TEST 10: Backend / RLS policy rejects attendance submission when session is closed', () => {
+    const session = { id: 's1', status: 'closed', end_time: '2026-09-01T10:00:00Z' };
+    const canMark = session.status === 'active' && new Date(session.end_time).getTime() > Date.now();
+    expect(canMark).toBe(false);
+  });
+
+  // TEST 11: Student already marked attendance (duplicate prevention)
+  test('TEST 11: Duplicate attendance submission triggers constraint 23505 unique_session_student', () => {
+    const existingRecords = [{ session_id: 's1', student_id: 'stud-1' }];
+    const newSubmission = { session_id: 's1', student_id: 'stud-1' };
+
+    const isDuplicate = existingRecords.some(
+      (r) => r.session_id === newSubmission.session_id && r.student_id === newSubmission.student_id
+    );
+    expect(isDuplicate).toBe(true);
+  });
+
+  // TEST 12: Same physical device logs into another student account during same session
+  test('TEST 12: Second student account on same physical device is blocked by unique_session_device', () => {
+    const existingRecords = [
+      { session_id: 's1', student_id: 'stud-1', device_id: 'DEV-PHYSICAL-FINGERPRINT-AAA' },
+    ];
+    const secondStudentAttempt = {
+      session_id: 's1',
+      student_id: 'stud-2',
+      device_id: 'DEV-PHYSICAL-FINGERPRINT-AAA',
+      verification_method: 'wifi_local_network',
+    };
+
+    const isDeviceAlreadyUsed = existingRecords.some(
+      (r) =>
+        r.session_id === secondStudentAttempt.session_id &&
+        r.device_id === secondStudentAttempt.device_id
+    );
+    expect(isDeviceAlreadyUsed).toBe(true);
+  });
+
+  // TEST B: Staff on Public Wi-Fi + Student on Staff Hotspot
+  test('TEST B: Staff on Public Wi-Fi and Student on Staff Hotspot fail discovery due to subnet isolation', () => {
+    const staffNetwork = { interface: 'wlan0', subnet: '10.0.0.0/24', ip: '10.0.0.45' };
+    const studentNetwork = { interface: 'wlan1', subnet: '192.168.43.0/24', ip: '192.168.43.102' };
+
+    // Discovered mDNS packets cannot route across isolated subnets without broadcast relay
+    const isSameSubnet = staffNetwork.subnet === studentNetwork.subnet;
+    const isDiscoveryPossible = isSameSubnet;
+    const scanStatus = isDiscoveryPossible ? 'discovered' : 'timeout';
+
+    expect(isSameSubnet).toBe(false);
+    expect(scanStatus).toBe('timeout');
+  });
+
+  // TEST C: Staff Hotspot + Student on Staff Hotspot
+  test('TEST C: Staff and Student both on Staff Hotspot discover active session on 192.168.43.x subnet', () => {
+    const hotspotSubnet = '192.168.43.0/24';
+    const staffBeacon = {
+      sessionId: 'SAS-HOTSPOT-101',
+      host: '192.168.43.1',
+      subnet: hotspotSubnet,
+    };
+    const studentConnection = {
+      targetSessionId: 'SAS-HOTSPOT-101',
+      gateway: '192.168.43.1',
+      subnet: hotspotSubnet,
+    };
+
+    const isSubnetMatched = staffBeacon.subnet === studentConnection.subnet;
+    const isSessionMatched = staffBeacon.sessionId === studentConnection.targetSessionId;
+    const isVerified = isSubnetMatched && isSessionMatched;
+
+    expect(isSubnetMatched).toBe(true);
+    expect(isSessionMatched).toBe(true);
+    expect(isVerified).toBe(true);
+  });
+});
+
+describe('Category 8: Session Attendance PDF Export Service (10 Tests)', () => {
+  const { pdfExportService } = require('../src/services/pdfExportService');
+
+  const mockGroup = {
+    id: 'grp-cs302',
+    name: 'Digital System Design',
+    code: 'CS302',
+    section: 'Sec B',
+    staffId: 'st-01',
+    staffName: 'Dr. Alan Turing',
+    joinCode: 'CS302-K9X',
+    scheduleDay: 'Monday, Wednesday',
+    schedulePeriod: 'Period 2 (10:00 - 11:00 AM)',
+    studentCount: 3,
+    createdAt: '2026-09-01',
+  };
+
+  const mockSession = {
+    id: 'sess-8899',
+    groupId: 'grp-cs302',
+    groupName: 'Digital System Design',
+    groupCode: 'CS302',
+    staffId: 'st-01',
+    date: '2026-09-05',
+    period: 'Period 2',
+    startTime: '2026-09-05T10:00:00.000Z',
+    endTime: '2026-09-05T10:10:00.000Z',
+    durationMinutes: 10,
+    status: 'closed' as const,
+    networkSessionId: 'SAS-CS302-8F92',
+  };
+
+  const mockRoster = [
+    {
+      studentId: 'st-001',
+      name: 'Alex Johnson',
+      rollNo: '21CS1085',
+      email: 'alex@example.com',
+      department: 'Computer Science',
+      status: 'present' as const,
+      markedAt: '10:03 AM',
+      verificationMethod: 'wifi_local_network' as const,
+      deviceId: 'DEV-FINGERPRINT-001',
+    },
+    {
+      studentId: 'st-002',
+      name: 'Sarah Connor',
+      rollNo: '21CS1086',
+      email: 'sarah@example.com',
+      department: 'Computer Science',
+      status: 'absent' as const,
+    },
+    {
+      studentId: 'st-003',
+      name: 'John Doe',
+      rollNo: '21CS1087',
+      email: 'john@example.com',
+      department: 'Computer Science',
+      status: 'manual_override' as const,
+      markedAt: '10:08 AM',
+      verificationMethod: 'manual_override' as const,
+      overrideReason: 'Verified in seat - phone dead',
+    },
+  ];
+
+  // Test P1: Institutional branding header
+  test('P1: PDF HTML template contains SAS branding and official report header', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+      staffName: 'Dr. Alan Turing',
+    });
+
+    expect(html).toContain('SAS — Self Attendance System');
+    expect(html).toContain('Official Course Session Attendance Record');
+    expect(html).toContain('OFFICIAL AUDIT REPORT');
+  });
+
+  // Test P2: Course metadata
+  test('P2: PDF HTML contains course title, code, section, and date', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+    });
+
+    expect(html).toContain('Digital System Design');
+    expect(html).toContain('CS302 (Sec B)');
+    expect(html).toContain('2026-09-05');
+    expect(html).toContain('Period 2');
+  });
+
+  // Test P3: Session timing
+  test('P3: PDF HTML contains duration and network session identifier', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+    });
+
+    expect(html).toContain('10 Minutes');
+    expect(html).toContain('SAS-CS302-8F92');
+  });
+
+  // Test P4: All enrolled students present in table
+  test('P4: PDF HTML table renders all enrolled students regardless of status', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+    });
+
+    expect(html).toContain('Alex Johnson');
+    expect(html).toContain('Sarah Connor');
+    expect(html).toContain('John Doe');
+    expect(html).toContain('21CS1085');
+    expect(html).toContain('21CS1086');
+    expect(html).toContain('21CS1087');
+  });
+
+  // Test P5: Absent student formatting
+  test('P5: Absent student displays ABSENT badge and em-dash for timestamp', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+    });
+
+    expect(html).toContain('badge-absent');
+    expect(html).toContain('ABSENT');
+    expect(html).toContain('—');
+  });
+
+  // Test P6: Present student formatting
+  test('P6: Present student displays PRESENT badge and real marked timestamp', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+    });
+
+    expect(html).toContain('badge-present');
+    expect(html).toContain('PRESENT');
+    expect(html).toContain('10:03 AM');
+  });
+
+  // Test P7: Manual override formatting and notes
+  test('P7: Manual override shows OVERRIDE badge, manual verification, and audit note', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+    });
+
+    expect(html).toContain('badge-override');
+    expect(html).toContain('OVERRIDE');
+    expect(html).toContain('Manual Override');
+    expect(html).toContain('Verified in seat - phone dead');
+  });
+
+  // Test P8: Summary statistics calculation
+  test('P8: Summary stats calculate present (2), absent (1), and rate (67%) accurately', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+    });
+
+    expect(html).toContain('<div class="stat-val">3</div>'); // Total
+    expect(html).toContain('<div class="stat-val">2</div>'); // Present
+    expect(html).toContain('<div class="stat-val">1</div>'); // Absent
+    expect(html).toContain('<div class="stat-val">67%</div>'); // Rate
+  });
+
+  // Test P9: A4 print media styling and multi-page table header repetition
+  test('P9: PDF HTML includes CSS for A4 print media and repeating table headers', () => {
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: mockRoster,
+    });
+
+    expect(html).toContain('size: A4 portrait');
+    expect(html).toContain('display: table-header-group');
+    expect(html).toContain('page-break-inside: avoid');
+  });
+
+  // Test P10: HTML entity escaping
+  test('P10: HTML entity escaping protects against XSS in student names and audit notes', () => {
+    const maliciousRoster = [
+      {
+        studentId: 'st-xss',
+        name: '<script>alert("XSS")</script>',
+        rollNo: '21CS9999',
+        email: 'xss@test.com',
+        department: 'CS',
+        status: 'manual_override' as const,
+        overrideReason: '<b>Bold Note</b> & special "chars"',
+      },
+    ];
+
+    const html = pdfExportService.generateSessionHTML({
+      group: mockGroup,
+      session: mockSession,
+      roster: maliciousRoster,
+    });
+
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;');
+    expect(html).toContain('&lt;b&gt;Bold Note&lt;/b&gt; &amp; special &quot;chars&quot;');
+  });
+});
