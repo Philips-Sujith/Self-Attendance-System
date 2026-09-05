@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -82,14 +81,13 @@ export const StaffDashboardScreen: React.FC = () => {
         {/* Top Staff Header */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.staffName}>{user?.name || 'Faculty Member'}</Text>
+            <Text style={styles.staffName}>{user?.name || 'Faculty Staff'}</Text>
             <Text style={styles.departmentText}>
-              {user?.department || 'Department of Computer Science'} • {user?.staffId || 'CSE-FAC-104'}
+              {user?.department || 'Computer Science & Engineering'} · {user?.staffId || 'Staff ID'}
             </Text>
           </View>
           <View style={styles.avatarPill}>
-            <Ionicons name="school" size={24} color={Colors.primaryLight} />
+            <Ionicons name="school" size={20} color={Colors.primaryLight} />
           </View>
         </View>
 
@@ -101,7 +99,7 @@ export const StaffDashboardScreen: React.FC = () => {
           </Card>
           <Card style={styles.statCard}>
             <Text style={styles.statNumber}>{totalStudents}</Text>
-            <Text style={styles.statLabel}>Total Students</Text>
+            <Text style={styles.statLabel}>Students</Text>
           </Card>
           <Card style={styles.statCard}>
             <Text style={[styles.statNumber, { color: Colors.success }]}>94.2%</Text>
@@ -111,12 +109,9 @@ export const StaffDashboardScreen: React.FC = () => {
 
         {/* Course Groups Section Header */}
         <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>My Course Groups</Text>
-            <Text style={styles.sectionSubtitle}>Manage rosters, schedule & sessions</Text>
-          </View>
+          <Text style={styles.sectionTitle}>My Course Groups</Text>
           <Button
-            title="+ New Group"
+            title="New Group"
             size="sm"
             variant="outline"
             iconName="add"
@@ -132,18 +127,18 @@ export const StaffDashboardScreen: React.FC = () => {
           </View>
         ) : groups.length === 0 ? (
           <Card variant="bordered" style={styles.emptyCard}>
-            <Ionicons name="folder-open-outline" size={48} color={Colors.textMuted} />
+            <Ionicons name="folder-open-outline" size={44} color={Colors.textMuted} />
             <Text style={styles.emptyTitle}>No Course Groups Yet</Text>
             <Text style={styles.emptyDesc}>
               Create your first course group to generate a join code and enroll students.
             </Text>
             <Button
-              title="Create First Course Group"
+              title="Create First Group"
               variant="primary"
               size="md"
               iconName="add-circle-outline"
               onPress={() => setCreateModalVisible(true)}
-              style={{ marginTop: Spacing.md }}
+              style={{ marginTop: Spacing.sm }}
             />
           </Card>
         ) : (
@@ -168,15 +163,15 @@ export const StaffDashboardScreen: React.FC = () => {
                 {/* Schedule and Roster info */}
                 <View style={styles.scheduleRow}>
                   <View style={styles.scheduleItem}>
-                    <Ionicons name="calendar-outline" size={14} color={Colors.textMuted} />
+                    <Ionicons name="calendar-outline" size={13} color={Colors.textMuted} />
                     <Text style={styles.scheduleText}>{item.scheduleDay}</Text>
                   </View>
                   <View style={styles.scheduleItem}>
-                    <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
+                    <Ionicons name="time-outline" size={13} color={Colors.textMuted} />
                     <Text style={styles.scheduleText}>{item.schedulePeriod}</Text>
                   </View>
                   <View style={styles.scheduleItem}>
-                    <Ionicons name="people-outline" size={14} color={Colors.textMuted} />
+                    <Ionicons name="people-outline" size={13} color={Colors.textMuted} />
                     <Text style={styles.scheduleText}>{item.studentCount || 0} Students</Text>
                   </View>
                 </View>
@@ -238,23 +233,19 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: Spacing.md,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: Spacing.xl,
+    gap: Spacing.sm,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
     paddingTop: Spacing.xs,
-  },
-  greeting: {
-    ...Typography.caption,
-    color: Colors.textMuted,
+    paddingBottom: Spacing.xs,
   },
   staffName: {
     ...Typography.h1,
-    fontSize: 24,
-    marginTop: 2,
+    fontSize: 22,
   },
   departmentText: {
     ...Typography.caption,
@@ -262,8 +253,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   avatarPill: {
-    width: 48,
-    height: 48,
+    width: 42,
+    height: 42,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primaryGlow,
     alignItems: 'center',
@@ -273,21 +264,23 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.lg,
+    gap: Spacing.xs,
+    marginVertical: Spacing.xs,
   },
   statCard: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
   },
   statNumber: {
     ...Typography.h2,
+    fontSize: 18,
     color: Colors.primaryLight,
   },
   statLabel: {
     ...Typography.caption,
-    fontSize: 11,
+    fontSize: 10,
     marginTop: 2,
     textAlign: 'center',
   },
@@ -295,18 +288,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    marginTop: Spacing.xs,
+    marginBottom: 2,
   },
   sectionTitle: {
-    ...Typography.h2,
-    fontSize: 18,
-  },
-  sectionSubtitle: {
-    ...Typography.caption,
-    color: Colors.textMuted,
+    ...Typography.h3,
+    fontSize: 16,
   },
   loaderContainer: {
-    padding: Spacing.xxl,
+    padding: Spacing.xl,
     alignItems: 'center',
     gap: Spacing.sm,
   },
@@ -316,8 +306,8 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     alignItems: 'center',
-    padding: Spacing.xl,
-    marginTop: Spacing.md,
+    padding: Spacing.lg,
+    marginTop: Spacing.sm,
   },
   emptyTitle: {
     ...Typography.h3,
@@ -327,10 +317,10 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     textAlign: 'center',
     marginTop: 4,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   groupsList: {
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   courseCard: {
     padding: Spacing.md,
@@ -339,7 +329,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   courseInfo: {
     flex: 1,
@@ -348,60 +338,60 @@ const styles = StyleSheet.create({
   codeRow: {
     flexDirection: 'row',
     gap: Spacing.xs,
-    marginBottom: Spacing.xs,
+    marginBottom: 3,
   },
   courseName: {
     ...Typography.bodyBold,
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.text,
   },
   joinCodeBox: {
     backgroundColor: Colors.surfaceElevated,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.primaryGlow,
   },
   joinCodeLabel: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '700',
     color: Colors.textMuted,
     letterSpacing: 0.5,
   },
   joinCodeText: {
     ...Typography.bodyBold,
-    fontSize: 14,
+    fontSize: 12,
     color: Colors.primaryLight,
     letterSpacing: 1,
   },
   scheduleRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.md,
-    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: Colors.surfaceBorder,
-    marginVertical: Spacing.sm,
+    marginVertical: Spacing.xs,
   },
   scheduleItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   scheduleText: {
     ...Typography.caption,
     color: Colors.textSecondary,
-    fontSize: 12,
+    fontSize: 11,
   },
   cardActionsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: Spacing.sm,
-    marginTop: Spacing.xs,
+    marginTop: 4,
   },
   rosterBtn: {
     borderWidth: 1,
@@ -411,3 +401,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+

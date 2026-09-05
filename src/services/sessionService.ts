@@ -260,7 +260,93 @@ export const sessionService = {
     };
   },
 
-  // Get active session for student's enrolled courses
+  // Realtime subscription for student dashboard to detect new sessions and closures
+  subscribeToStudentSessions: (onSessionChange: () => void): (() => void) => {
+    const channel = supabase
+      .channel('student-dashboard-sessions-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'attendance_sessions',
+        },
+        () => {
+          onSessionChange();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  // Verify active status and validity of a specific session from database
+  verifySessionActive: async (
+    sessionId: string
+  ): Promise<{ isActive: boolean; session: AttendanceSession | null; reason?: string }> => {
+    try {
+      const { data: session, error } = await supabase
+        .from('attendance_sessions')
+        .select(`
+          id,
+          group_id,
+          staff_id,
+          date,
+          period,
+          start_time,
+          end_time,
+          duration_minutes,
+          status,
+          network_session_id,
+          course_groups:group_id (
+            id,
+            name,
+            code,
+            section
+          )
+        `)
+        .eq('id', sessionId)
+        .maybeSingle();
+
+      if (error || !session) {
+        return { isActive: false, session: null, reason: 'Attendance session not found.' };
+      }
+
+      if (session.status !== 'active') {
+        return { isActive: false, session: null, reason: 'This session has been closed by the instructor.' };
+      }
+
+      const isExpired = new Date(session.end_time).getTime() <= Date.now();
+      if (isExpired) {
+        return { isActive: false, session: null, reason: 'This attendance session has expired.' };
+      }
+
+      const group: any = session.course_groups;
+      const parsedSession: AttendanceSession = {
+        id: session.id,
+        groupId: session.group_id,
+        groupName: group?.name || 'Active Course',
+        groupCode: group?.code || 'CLASS',
+        staffId: session.staff_id,
+        date: session.date,
+        period: session.period,
+        startTime: session.start_time,
+        endTime: session.end_time,
+        durationMinutes: session.duration_minutes,
+        status: session.status as SessionStatus,
+        networkSessionId: session.network_session_id,
+      };
+
+      return { isActive: true, session: parsedSession };
+    } catch (err: any) {
+      console.error('Error in verifySessionActive:', err);
+      return { isActive: false, session: null, reason: err.message || 'Database error verifying session.' };
+    }
+  },
+
+  // Get active session for student's enrolled courses (strict real-time validation)
   getActiveSessionForStudent: async (studentId: string): Promise<AttendanceSession | null> => {
     try {
       // 1. Get group IDs student belongs to
@@ -303,6 +389,12 @@ export const sessionService = {
         .maybeSingle();
 
       if (sessErr || !session) return null;
+
+      // 3. Strict timestamp check: reject sessions that have exceeded end_time
+      const isExpired = new Date(session.end_time).getTime() <= Date.now();
+      if (isExpired) {
+        return null;
+      }
 
       const group: any = session.course_groups;
       return {

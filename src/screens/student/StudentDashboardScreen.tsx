@@ -43,6 +43,15 @@ export const StudentDashboardScreen: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
+
+    // Subscribe to real-time session changes so student dashboard updates instantly
+    const unsubscribe = sessionService.subscribeToStudentSessions(() => {
+      fetchDashboardData();
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [fetchDashboardData]);
 
   const onRefresh = () => {
@@ -71,22 +80,21 @@ export const StudentDashboardScreen: React.FC = () => {
         {/* Student Profile Header */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>Student Dashboard</Text>
-            <Text style={styles.studentName}>{user?.name || 'Alex Johnson'}</Text>
+            <Text style={styles.studentName}>{user?.name || 'Student'}</Text>
             <Text style={styles.subDetail}>
-              {user?.rollNo || '21CS1085'} • {user?.classSection || 'CSE Sec B'}
+              {user?.rollNo || 'Roll Number'} · {user?.classSection || 'Section'}
             </Text>
           </View>
           <View style={styles.avatarPill}>
-            <Ionicons name="person" size={22} color={Colors.secondary} />
+            <Ionicons name="person" size={20} color={Colors.secondary} />
           </View>
         </View>
 
-        {/* ACTIVE ATTENDANCE SESSION BANNER */}
-        {activeSession && (
+        {/* ATTENDANCE SESSION STATUS (OPEN vs CLOSED) */}
+        {activeSession ? (
           <Card variant="glow" style={styles.activeSessionBanner}>
             <View style={styles.bannerHeader}>
-              <Badge label="ATTENDANCE OPEN NOW" variant="warning" dot />
+              <Badge label="ATTENDANCE OPEN" variant="warning" dot />
               <Text style={styles.bannerTimer}>~{activeSession.durationMinutes} mins</Text>
             </View>
 
@@ -94,17 +102,29 @@ export const StudentDashboardScreen: React.FC = () => {
               {activeSession.groupName || activeSession.groupCode}
             </Text>
             <Text style={styles.bannerSubtitle}>
-              Class Period: {activeSession.period} • WiFi Proximity Check Required
+              Class Period: {activeSession.period}
             </Text>
 
             <Button
-              title="Open Session & Mark Attendance"
+              title="Open Session & Verify Network"
               variant="primary"
               size="md"
               iconName="finger-print"
               onPress={handleMarkAttendance}
               style={styles.markBtn}
             />
+          </Card>
+        ) : (
+          <Card variant="bordered" style={styles.inactiveSessionCard}>
+            <View style={styles.inactiveRow}>
+              <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inactiveTitle}>Attendance Closed</Text>
+                <Text style={styles.inactiveDesc}>
+                  No active attendance session.
+                </Text>
+              </View>
+            </View>
           </Card>
         )}
 
@@ -117,19 +137,16 @@ export const StudentDashboardScreen: React.FC = () => {
               <Text style={styles.summarySub}>Across {courses.length} enrolled subjects</Text>
             </View>
             <View style={styles.summaryIconBox}>
-              <Ionicons name="checkmark-done-circle" size={44} color={Colors.success} />
+              <Ionicons name="checkmark-done-circle" size={40} color={Colors.success} />
             </View>
           </View>
         </Card>
 
         {/* Enrolled Courses Header */}
         <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Enrolled Courses</Text>
-            <Text style={styles.sectionSubtitle}>Subjects you've joined with join codes</Text>
-          </View>
+          <Text style={styles.sectionTitle}>Enrolled Courses</Text>
           <Button
-            title="+ Join Course"
+            title="Join Course"
             size="sm"
             variant="secondary"
             iconName="add"
@@ -145,18 +162,18 @@ export const StudentDashboardScreen: React.FC = () => {
           </View>
         ) : courses.length === 0 ? (
           <Card variant="bordered" style={styles.emptyCard}>
-            <Ionicons name="school-outline" size={44} color={Colors.textMuted} />
+            <Ionicons name="school-outline" size={40} color={Colors.textMuted} />
             <Text style={styles.emptyTitle}>No Courses Enrolled</Text>
             <Text style={styles.emptyDesc}>
-              Ask your faculty member for the 6-character course join code and tap "+ Join Course".
+              Ask your faculty member for the course join code and tap "Join Course".
             </Text>
             <Button
-              title="Join a Course Now"
+              title="Join a Course"
               variant="secondary"
               size="md"
               iconName="key-outline"
               onPress={() => navigation.navigate('StudentJoinGroup')}
-              style={{ marginTop: Spacing.md }}
+              style={{ marginTop: Spacing.sm }}
             />
           </Card>
         ) : (
@@ -177,12 +194,12 @@ export const StudentDashboardScreen: React.FC = () => {
                     <Text style={[styles.percentText, { color: Colors.success }]}>
                       95%
                     </Text>
-                    <Text style={styles.classesAttended}>Present: 19/20</Text>
+                    <Text style={styles.classesAttended}>19/20</Text>
                   </View>
                 </View>
 
                 <View style={styles.scheduleRow}>
-                  <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
+                  <Ionicons name="time-outline" size={13} color={Colors.textMuted} />
                   <Text style={styles.scheduleText}>
                     {course.scheduleDay} ({course.schedulePeriod})
                   </Text>
@@ -203,23 +220,19 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: Spacing.md,
-    paddingBottom: Spacing.xxl,
-    gap: Spacing.md,
+    paddingBottom: Spacing.xl,
+    gap: Spacing.sm,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: Spacing.xs,
-  },
-  greeting: {
-    ...Typography.caption,
-    color: Colors.textMuted,
+    paddingBottom: Spacing.xs,
   },
   studentName: {
     ...Typography.h1,
     fontSize: 22,
-    marginTop: 2,
   },
   subDetail: {
     ...Typography.caption,
@@ -227,8 +240,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   avatarPill: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(6, 182, 212, 0.15)',
     alignItems: 'center',
@@ -240,6 +253,27 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     backgroundColor: Colors.surfaceElevated,
     borderColor: Colors.primaryLight,
+  },
+  inactiveSessionCard: {
+    padding: Spacing.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderColor: Colors.surfaceBorder,
+  },
+  inactiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  inactiveTitle: {
+    ...Typography.bodyBold,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  inactiveDesc: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    fontSize: 11,
+    marginTop: 1,
   },
   bannerHeader: {
     flexDirection: 'row',
@@ -253,8 +287,8 @@ const styles = StyleSheet.create({
   },
   bannerCourseTitle: {
     ...Typography.h2,
-    fontSize: 18,
-    marginTop: Spacing.xs,
+    fontSize: 17,
+    marginTop: 2,
   },
   bannerSubtitle: {
     ...Typography.caption,
@@ -262,7 +296,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   markBtn: {
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
   },
   summaryCard: {
     padding: Spacing.md,
@@ -275,18 +309,19 @@ const styles = StyleSheet.create({
   summaryLabel: {
     ...Typography.captionBold,
     letterSpacing: 0.5,
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.textMuted,
   },
   summaryPercent: {
     ...Typography.h1,
-    fontSize: 32,
+    fontSize: 28,
     color: Colors.success,
     marginVertical: 2,
   },
   summarySub: {
     ...Typography.caption,
     color: Colors.textSecondary,
+    fontSize: 11,
   },
   summaryIconBox: {
     opacity: 0.9,
@@ -296,17 +331,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: Spacing.xs,
+    marginBottom: 2,
   },
   sectionTitle: {
-    ...Typography.h2,
-    fontSize: 18,
-  },
-  sectionSubtitle: {
-    ...Typography.caption,
-    color: Colors.textMuted,
+    ...Typography.h3,
+    fontSize: 16,
   },
   loaderContainer: {
-    padding: Spacing.xxl,
+    padding: Spacing.xl,
     alignItems: 'center',
     gap: Spacing.sm,
   },
@@ -316,8 +348,8 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     alignItems: 'center',
-    padding: Spacing.xl,
-    marginTop: Spacing.md,
+    padding: Spacing.lg,
+    marginTop: Spacing.sm,
   },
   emptyTitle: {
     ...Typography.h3,
@@ -327,7 +359,7 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     textAlign: 'center',
     marginTop: 4,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   coursesList: {
     gap: Spacing.sm,
@@ -347,7 +379,7 @@ const styles = StyleSheet.create({
   codeRow: {
     flexDirection: 'row',
     gap: Spacing.xs,
-    marginBottom: Spacing.xs,
+    marginBottom: 3,
   },
   courseName: {
     ...Typography.bodyBold,
@@ -356,33 +388,35 @@ const styles = StyleSheet.create({
   instructorText: {
     ...Typography.caption,
     color: Colors.textMuted,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 1,
   },
   percentBox: {
     alignItems: 'flex-end',
   },
   percentText: {
     ...Typography.h2,
-    fontSize: 20,
+    fontSize: 18,
   },
   classesAttended: {
     ...Typography.caption,
     fontSize: 10,
     color: Colors.textMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
   scheduleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: Spacing.sm,
+    marginTop: Spacing.xs,
     paddingTop: Spacing.xs,
     borderTopWidth: 1,
     borderTopColor: Colors.surfaceBorder,
   },
   scheduleText: {
     ...Typography.caption,
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textSecondary,
   },
 });
+

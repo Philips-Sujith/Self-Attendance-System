@@ -74,7 +74,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: BorderRadius.full,
     borderWidth: 1,
-    alignSelf: 'flex-start',
   },
   sizeSm: {
     paddingVertical: 3,

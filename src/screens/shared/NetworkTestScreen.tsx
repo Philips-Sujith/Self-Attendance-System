@@ -58,6 +58,7 @@ export const NetworkTestScreen: React.FC = () => {
     });
 
     return () => {
+      networkProximityService.stopScan();
       unsubAdvertise();
       unsubScan();
       unsubFound();
@@ -74,7 +75,7 @@ export const NetworkTestScreen: React.FC = () => {
 
   const handleStartScan = () => {
     setDiscoveredList([]);
-    networkProximityService.startScan(testSessionId.trim().toUpperCase(), 5000);
+    networkProximityService.startScan(testSessionId.trim().toUpperCase(), 7000);
   };
 
   return (

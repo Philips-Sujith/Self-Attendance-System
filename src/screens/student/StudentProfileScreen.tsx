@@ -8,25 +8,21 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { useAuth } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { StudentStackParamList } from '../../types/navigation';
 
 export const StudentProfileScreen: React.FC = () => {
   const { user, logout } = useAuth();
-  const navigation = useNavigation<NativeStackNavigationProp<StudentStackParamList>>();
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header title="Student Profile" subtitle="Account & Enrolled Roster" />
+      <Header title="Student Profile" />
       <ScrollView contentContainerStyle={styles.container}>
         {/* Profile Card */}
         <Card variant="elevated" style={styles.profileCard}>
           <View style={styles.avatar}>
             <Ionicons name="person" size={36} color={Colors.secondary} />
           </View>
-          <Text style={styles.name}>{user?.name || 'Alex Johnson'}</Text>
-          <Text style={styles.email}>{user?.email || 'alex.j@student.college.edu'}</Text>
+          <Text style={styles.name}>{user?.name || 'Student'}</Text>
+          <Text style={styles.email}>{user?.email || 'student@college.edu'}</Text>
           <Badge
             label="Verified Student"
             variant="info"
@@ -59,12 +55,6 @@ export const StudentProfileScreen: React.FC = () => {
         {/* Actions */}
         <View style={styles.actions}>
           <Button
-            title="Local WiFi Diagnostics Tool"
-            variant="secondary"
-            iconName="wifi"
-            onPress={() => navigation.navigate('NetworkTest')}
-          />
-          <Button
             title="Sign Out"
             variant="danger"
             iconName="log-out-outline"
@@ -82,26 +72,27 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   container: {
-    padding: Spacing.lg,
+    padding: Spacing.md,
     gap: Spacing.md,
   },
   profileCard: {
     alignItems: 'center',
-    padding: Spacing.xl,
+    padding: Spacing.lg,
   },
   avatar: {
-    width: 72,
-    height: 72,
+    width: 68,
+    height: 68,
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(6, 182, 212, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
     borderWidth: 1.5,
     borderColor: Colors.secondary + '55',
   },
   name: {
     ...Typography.h2,
+    fontSize: 20,
   },
   email: {
     ...Typography.caption,
@@ -109,23 +100,25 @@ const styles = StyleSheet.create({
   },
   detailsCard: {
     padding: Spacing.md,
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 2,
   },
   label: {
     ...Typography.captionBold,
     color: Colors.textSecondary,
   },
   value: {
-    ...Typography.body,
+    ...Typography.bodyBold,
+    fontSize: 14,
     color: Colors.text,
   },
   actions: {
-    gap: Spacing.md,
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
   },
 });
+
